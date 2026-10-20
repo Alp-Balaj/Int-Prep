@@ -1,0 +1,43 @@
+{
+  "startDate": "2026-10-20",
+  "interviewDate": "2026-11-02",
+  "schedule": [
+    { "day": 1, "date": "2026-10-20", "title": "RAG pipeline concepts; Python + FastAPI hello world", "xp": 150, "nodes": ["agentic"] },
+    { "day": 2, "date": "2026-10-21", "title": "LangGraph tutorial: state, nodes, edges, interrupts", "xp": 150, "nodes": ["agentic"] },
+    { "day": 3, "date": "2026-10-22", "title": "CrewAI quickstart; AgentCore overview and docs", "xp": 150, "nodes": ["agentic"] },
+    { "day": 4, "date": "2026-10-23", "title": "OpenSearch hybrid search in Docker; index sample documents", "xp": 150, "nodes": ["agentic", "aws"] },
+    { "day": 5, "date": "2026-10-24", "title": "React crash course from the Angular mapping; streaming chat UI", "xp": 200, "nodes": ["react-python"] },
+    { "day": 6, "date": "2026-10-25", "title": "Build the portfolio backend + agent workflow end to end", "xp": 400, "nodes": ["agentic"] },
+    { "day": 7, "date": "2026-10-26", "title": "Terraform basics; provision S3 + ECR", "xp": 150, "nodes": ["aws"] },
+    { "day": 8, "date": "2026-10-27", "title": "Deploy backend (ECS or Lambda) + API Gateway with Terraform", "xp": 200, "nodes": ["aws"] },
+    { "day": 9, "date": "2026-10-28", "title": "Audit log + eval set; write the README", "xp": 150, "nodes": ["security", "agentic"] },
+    { "day": 10, "date": "2026-10-29", "title": "Security and governance section; eDiscovery terms", "xp": 150, "nodes": ["security", "ediscovery"] },
+    { "day": 11, "date": "2026-10-30", "title": "Write and rehearse the 7 stories out loud", "xp": 200, "nodes": ["stories"] },
+    { "day": 12, "date": "2026-10-31", "title": "Final boss: the 2-million-document design, 45 minutes, timed", "xp": 500, "nodes": ["boss"] },
+    { "day": 13, "date": "2026-11-01", "title": "Rest. Review the likely questions and your questions for them", "xp": 100, "nodes": [] },
+    { "day": 14, "date": "2026-11-02", "title": "Interview day. Review only, nothing new.", "xp": 0, "nodes": [] }
+  ],
+  "portfolio": {
+    "title": "Legal document Q&A agent",
+    "what": "Upload a set of public legal documents (court opinions or sample contracts), ask questions, get answers with citations, and run a multi-agent review that flags documents as relevant or not with a reason.",
+    "steps": [
+      { "id": "pf.fastapi", "title": "Python + FastAPI backend", "xp": 150 },
+      { "id": "pf.langgraph", "title": "LangGraph workflow: router → retriever → reviewer → answer with citations, with a human-approval step", "xp": 300 },
+      { "id": "pf.opensearch", "title": "OpenSearch hybrid search (BM25 + kNN) with metadata filters", "xp": 250 },
+      { "id": "pf.bedrock", "title": "Bedrock (or another LLM API) for generation and embeddings", "xp": 100 },
+      { "id": "pf.react", "title": "React frontend with streaming answers and a visible trace of agent steps", "xp": 300 },
+      { "id": "pf.audit", "title": "Audit log table: every query, retrieved doc IDs, tool calls, user", "xp": 150 },
+      { "id": "pf.terraform", "title": "Terraform for S3, ECR, ECS or Lambda, API Gateway, CloudFront", "xp": 300 },
+      { "id": "pf.evals", "title": "A small eval set (20 questions) with a faithfulness score in the README", "xp": 200 },
+      { "id": "pf.decision", "title": "Write down one design decision you'd change for a real client (e.g. per-matter index isolation)", "xp": 100 }
+    ],
+    "cut": "If short on time: run OpenSearch in Docker locally instead of AWS; deploy only the backend with Terraform; skip CodePipeline."
+  },
+  "questionsForThem": [
+    "Which clients and use cases is the team building for now?",
+    "Which framework and model providers are standard?",
+    "How are agent outputs validated before clients rely on them?",
+    "What does the first 90 days look like?",
+    "How are LLM-based review decisions being validated and defended to courts or regulators today?"
+  ]
+}

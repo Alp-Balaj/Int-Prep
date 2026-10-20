@@ -1,0 +1,1138 @@
+{
+  "tier": {
+    "id": "agentic",
+    "name": "Agentic AI",
+    "level": 1,
+    "tease": "The RAG demo that wowed the partners would have shown an associate a walled-off matter on day one."
+  },
+  "nodes": [
+    {
+      "id": "agentic.rag-pipeline",
+      "title": "The RAG Pipeline",
+      "tease": "Most RAG failures happen before the model sees a single token. Which stage is quietly to blame?",
+      "lesson": {
+        "body": "RAG is two pipelines that share one index. The **offline** pipeline runs when documents arrive: parse (PDF text layer, OCR for scans, email headers), chunk, embed each chunk with an embedding model, and write `{chunk_id, doc_id, text, vector, metadata}` into an index. The **online** pipeline runs per question: embed the query with the *same* model, retrieve candidates (vector, lexical or both), optionally rerank, then build a prompt that contains the top chunks with their ids and ask the model to answer *and cite the ids*. Your answer service then checks that every cited id actually exists in the retrieved set before showing it, because models will invent plausible-looking citations.\n\nThink of the offline side as a Kafka consumer that is idempotent on `doc_id` plus content hash, and the index as an Elasticsearch index with a `text` field and a `dense_vector` field side by side. Bedrock Knowledge Bases packages the same stages: a data-source sync does ingest, chunk and embed; `Retrieve` returns chunks (five by default); `RetrieveAndGenerate` adds generation and returns `citations` with `retrievedReferences`. Its prompt template must keep the `$output_format_instructions$` placeholder or citations disappear.\n\nMost quality bugs live in retrieval, not generation. Anthropic's contextual retrieval experiment makes the point: prepending a one-sentence LLM-written context to each chunk before embedding cut top-20 retrieval failures by 35%, adding contextual BM25 took that to 49%, and reranking took it to 67%, for roughly $1.02 per million document tokens with prompt caching. And when the whole corpus is under about 200k tokens (roughly 500 pages), skip RAG entirely: put it in the context window with caching and move on.",
+        "snippet": "OFFLINE (per document)              ONLINE (per question)\nS3 drop -> parse / OCR              question -> embed(query)\n        -> chunk (structure-aware)           -> BM25 || kNN   [filter: matter, acl]\n        -> embed(chunk)                      -> RRF fuse -> rerank top 50 -> keep 8\n        -> index {text, vector, meta}        -> prompt with [chunk ids] -> LLM\n                                             -> verify cited ids -> answer + citations\n\nFailure map:\n  wrong chunk ranked 40th ........ retrieval   (fix chunking / hybrid / rerank)\n  clause split across chunks ..... chunking    (fix structure-aware splitting)\n  right chunk present, ignored ... generation  (fix prompt / model / grounding check)\n  doc never indexed .............. ingestion   (fix parser / idempotency / sync)",
+        "snippetLang": "text",
+        "source": {
+          "title": "Amazon Bedrock Knowledge Bases - How it works",
+          "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/kb-how-it-works.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "agentic.rag-pipeline.c1",
+          "type": "mc",
+          "prompt": "Which of these steps runs in the online (per-question) path of a RAG system rather than at ingestion time?",
+          "options": [
+            "Building the HNSW graph over document vectors",
+            "Embedding the user's question",
+            "Splitting PDFs into chunks",
+            "OCR of scanned exhibits"
+          ],
+          "answer": 1,
+          "why": "The query must be embedded at request time with the same model used for the chunks, so it lands in the same vector space. Graph building, chunking and OCR are all ingestion work; doing them per request would be unaffordable."
+        },
+        {
+          "id": "agentic.rag-pipeline.c2",
+          "type": "mc",
+          "prompt": "In Anthropic's contextual retrieval experiment, contextual embeddings combined with contextual BM25 reduced the top-20 retrieval failure rate by roughly:",
+          "options": ["35%", "49%", "67%", "90%"],
+          "answer": 1,
+          "why": "35% was contextual embeddings alone, 49% was embeddings plus contextual BM25 (5.7% to 2.9% failure rate), and 67% required adding a reranker. Candidates often quote the 67% headline for the wrong configuration."
+        },
+        {
+          "id": "agentic.rag-pipeline.c3",
+          "type": "tf",
+          "prompt": "RAG is always the cheaper option compared with putting the whole document set into the prompt.",
+          "answer": false,
+          "why": "Below roughly 200k tokens (about 500 pages) the entire corpus fits in context, and prompt caching makes repeated calls cheap and fast. A retrieval pipeline adds moving parts and a whole class of recall bugs for no benefit at that size."
+        },
+        {
+          "id": "agentic.rag-pipeline.c4",
+          "type": "cloze",
+          "prompt": "In Bedrock Knowledge Bases, the ___ placeholder must stay in the generation prompt template or the response will carry no citations.",
+          "answer": "$output_format_instructions$",
+          "why": "That placeholder injects model-specific formatting and citation instructions. Teams who customise the template and delete it lose citations silently, then blame the model."
+        },
+        {
+          "id": "agentic.rag-pipeline.c5",
+          "type": "mc",
+          "prompt": "Why must the user's question be embedded with exactly the same embedding model (and version) as the indexed chunks?",
+          "options": [
+            "Because newer models produce more dimensions and the index would overflow",
+            "Because vectors from different models occupy unrelated spaces, so distances between them are meaningless",
+            "Because the tokenizer would otherwise truncate the question",
+            "Because embedding APIs are billed per model and mixing models double-bills"
+          ],
+          "answer": 1,
+          "why": "Similarity only means something between vectors produced by the same model. A dimension mismatch would at least fail loudly; a different model with the same dimension count fails silently with confident nonsense."
+        },
+        {
+          "id": "agentic.rag-pipeline.c6",
+          "type": "tf",
+          "prompt": "If a model's answer cites a document id that is well formed, you can show it to the lawyer without further checks.",
+          "answer": false,
+          "why": "Models fabricate plausible ids. The answer service must verify every cited id against the set of chunks actually placed in the prompt and drop or flag anything else; a fabricated citation in a legal memo is worse than no citation."
+        },
+        {
+          "id": "agentic.rag-pipeline.c7",
+          "type": "cloze",
+          "prompt": "With prompt caching, Anthropic estimated the one-time cost of generating contextual chunk descriptions at about $___ per million document tokens.",
+          "answer": "1.02",
+          "why": "The whole document is cached and each chunk is a short request against it, which is why the cost is near one dollar per million tokens rather than tens of dollars. That number makes contextual retrieval affordable for a 2-million-document corpus."
+        },
+        {
+          "id": "agentic.rag-pipeline.c8",
+          "type": "mc",
+          "prompt": "Which of these is a generation-stage failure rather than a retrieval-stage failure?",
+          "options": [
+            "The correct chunk was ranked 40th and cut off at k=10",
+            "The clause was split across two chunks so neither matched the question",
+            "The correct chunk was in the prompt but the model answered from its training data instead",
+            "A metadata filter on matter_id excluded the correct document"
+          ],
+          "answer": 2,
+          "why": "Only the third case has the right evidence in front of the model; fixing it means prompting, model choice or a grounding check. The others are fixed in chunking, search or filtering, which is why evaluation must separate the two stages."
+        }
+      ],
+      "explain": [
+        {
+          "id": "agentic.rag-pipeline.e1",
+          "prompt": "Walk me through what happens between a lawyer typing a question and seeing an answer with citations.",
+          "seconds": 120,
+          "modelAnswer": "Two things have already happened before the question: documents were parsed, chunked along their structure, embedded, and written to an index that holds the text, the vector and metadata like matter id and privilege flag. When the question arrives, I first resolve the user's entitlements into a filter. I embed the question with the same model used at ingest and run a hybrid query: BM25 for exact terms like section numbers, kNN for paraphrase, both pre-filtered by that entitlement filter, fused with reciprocal rank fusion. The top 50 or so go through a cross-encoder reranker and I keep the best eight. Those chunks go into the prompt with their ids, and the model is told to answer only from them and cite ids. Before I render, I verify every cited id is one I actually sent, attach the page and section from metadata, and log the whole trace: query, filter, chunk ids, tokens, latency. If nothing relevant survived the reranker, I say so rather than let the model improvise.",
+          "rubric": [
+            "Separates offline ingestion from the online query path",
+            "Query embedded with the same model as the chunks",
+            "Permission filter derived server-side and applied at retrieval",
+            "Hybrid retrieval plus reranking before generation",
+            "Citations verified against retrieved chunk ids",
+            "Mentions tracing or an explicit 'not found' path"
+          ]
+        },
+        {
+          "id": "agentic.rag-pipeline.e2",
+          "prompt": "When is RAG the wrong tool? Tell me when you would not build it.",
+          "seconds": 120,
+          "modelAnswer": "RAG earns its complexity when the corpus is large, changes often, or has per-user access rules. If none of those hold, I would not build it. First, size: under roughly 200k tokens, about 500 pages, the whole set fits in the context window, and with prompt caching the repeated cost is small. A single matter's key contracts often fit, and stuffing them in gives better cross-document reasoning than retrieval does, with no recall risk. Second, when the question is not really about retrieval: summarising one document, drafting from a template, or structured extraction from a known file needs the file, not a search. Third, when answers must be exact and the source is a database: an ERP question like 'what is this employee's leave balance' should be a tool call to SQL, not similarity search over exported PDFs. Fourth, when nobody can label a golden set, because I cannot tell whether the retriever works. I would say this to a partner as: start with the simplest thing that answers the question correctly, measure, and add retrieval when the documents outgrow the window.",
+          "rubric": [
+            "Context-window threshold around 200k tokens with prompt caching",
+            "Structured data belongs in tool calls, not vector search",
+            "Single-document tasks do not need retrieval",
+            "Cannot evaluate without a golden set, so start simple",
+            "Frames the decision in terms the client understands"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "agentic.rag-pipeline.s1",
+          "situation": "A litigation partner wants a demo in three days: ask questions over one matter's 180-page set of agreements and correspondence. Your team proposes standing up a vector store, chunking pipeline and reranker on AWS before the demo. The firm has an AWS account and Bedrock access already.",
+          "question": "What do you propose?",
+          "options": [
+            {
+              "text": "Load the whole 180-page set into the model's context with prompt caching, ask the model to cite page numbers, and demo that; plan the retrieval pipeline for the full corpus afterwards.",
+              "verdict": "best",
+              "why": "180 pages is well under the ~200k token point where RAG starts to pay off. You remove retrieval recall risk from the demo, deliver in a day, and learn which questions the partner actually asks before you design chunking."
+            },
+            {
+              "text": "Build the full pipeline in three days using Bedrock Knowledge Bases with default chunking so the demo already resembles production.",
+              "verdict": "ok",
+              "why": "Knowledge Bases is fast to stand up and the demo would work, but default 300-token chunks on legal text will produce a few embarrassing mis-citations in front of a partner, and you are spending the three days on infrastructure instead of on the questions."
+            },
+            {
+              "text": "Fine-tune a model on the matter's documents so it knows the case without retrieval.",
+              "verdict": "bad",
+              "why": "Fine-tuning does not reliably memorise facts, cannot cite sources, cannot be updated when a new document arrives, and takes longer than three days. It also spreads client-confidential text into model weights."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agentic.chunking",
+      "title": "Chunking Strategies",
+      "tease": "A 300-token window cut a contract clause in half. The model confidently cited the wrong party.",
+      "lesson": {
+        "body": "Chunking decides what a vector can ever mean. **Fixed-size** splits on a token budget with an overlap percentage; Bedrock's default is about 300 tokens, respecting sentence boundaries. It is cheap and predictable, and it happily puts 'the Supplier shall indemnify the Customer...' in one chunk and the carve-out 'except where caused by Customer's negligence' in the next, so the retriever returns an obligation without its exception.\n\n**Hierarchical** (parent/child) chunking embeds small child chunks for precise matching, then at retrieval replaces each hit with its larger parent so the model sees surrounding context. In Bedrock you set parent and child max tokens plus an *absolute* overlap token count, and because children collapse into parents you can get fewer results than `numberOfResults`. AWS advises against it on S3 Vectors when combined sizes pass about 8,000 tokens, because of per-vector metadata limits.\n\n**Semantic** chunking embeds each sentence with a buffer of neighbours and breaks where dissimilarity crosses a breakpoint percentile threshold. Boundaries follow topic shifts, but it costs foundation-model calls at ingest.\n\n**Structure-aware** chunking uses the document's own skeleton. Legal text is a tree: Article, Section, sub-clause (a)(i), a Definitions section whose capitalised terms are referenced everywhere, schedules and exhibits, email threads with headers. Split at those boundaries, prepend a breadcrumb such as `MSA v3 > Art. 12 Liability > 12.3(b)` to the chunk text, and store section, page and defined-term metadata. Lawyers then get the clause they asked about together with the one it modifies, and citations that point to a page. Bedrock attaches full-page or full-table context to chunks from parsed markdown when that context is 10,000 characters or less; for anything beyond that, choose no chunking and split in a custom transformation Lambda, where your own parser knows what a clause is.",
+        "snippet": "import re\nHEADING = re.compile(r'^(ARTICLE|Article|Section|SCHEDULE)\\s+[\\dIVX]+[.\\d()a-z]*', re.M)\n\ndef chunk_legal(doc_id: str, text: str, max_tokens: int = 400):\n    bounds = [m.start() for m in HEADING.finditer(text)] + [len(text)]\n    crumbs: list[str] = []\n    for start, end in zip(bounds, bounds[1:]):\n        section = text[start:end].strip()\n        heading = section.splitlines()[0]\n        depth = heading.count('.') + 1          # 12 -> 1, 12.3 -> 2\n        crumbs = crumbs[:depth - 1] + [heading]\n        breadcrumb = ' > '.join(crumbs)\n        for piece in split_on_sentences(section, max_tokens):\n            yield {\n                'doc_id': doc_id,\n                'section': heading,\n                'text': f'[{breadcrumb}]\\n{piece}',   # breadcrumb is embedded too\n                'parent_id': f'{doc_id}#{crumbs[0]}',  # for small-to-big retrieval\n            }",
+        "snippetLang": "python",
+        "source": {
+          "title": "How content chunking works for knowledge bases - Amazon Bedrock",
+          "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/kb-chunking.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "agentic.chunking.c1",
+          "type": "mc",
+          "prompt": "What does Bedrock Knowledge Bases' default chunking do?",
+          "options": [
+            "Treats each document as one chunk",
+            "Splits into chunks of about 300 tokens while preserving sentence boundaries",
+            "Splits at semantic breakpoints using an embedding model",
+            "Splits into 512-token chunks with 20% overlap"
+          ],
+          "answer": 1,
+          "why": "Default chunking is roughly 300 tokens, sentence-aware, with no configurable overlap. 512 tokens with overlap is what you would configure under fixed-size chunking, and semantic splitting is a separate, paid option."
+        },
+        {
+          "id": "agentic.chunking.c2",
+          "type": "mc",
+          "prompt": "With hierarchical chunking in Bedrock, what does the retriever return to the model?",
+          "options": [
+            "The matching child chunk only, to keep the prompt short",
+            "Both the child and all its siblings",
+            "The parent chunk that contains the matching child, which can make the result count smaller than requested",
+            "A summary of the parent generated at ingest"
+          ],
+          "answer": 2,
+          "why": "Small children give precise matching; the parent gives the model context. Because several children can map to one parent, the returned count may be lower than numberOfResults, which surprises teams who size k by the child count."
+        },
+        {
+          "id": "agentic.chunking.c3",
+          "type": "tf",
+          "prompt": "In Bedrock hierarchical chunking, overlap between chunks is expressed as a percentage, just like fixed-size chunking.",
+          "answer": false,
+          "why": "Hierarchical overlap is an absolute number of tokens applied between consecutive parents and consecutive children. Fixed-size chunking is the one that takes an overlap percentage."
+        },
+        {
+          "id": "agentic.chunking.c4",
+          "type": "cloze",
+          "prompt": "Bedrock semantic chunking places a boundary where the sentence-to-sentence dissimilarity exceeds the ___ percentile threshold.",
+          "answer": "breakpoint",
+          "why": "The breakpoint percentile threshold, together with buffer size and max tokens, are the three semantic-chunking knobs. A higher threshold means fewer, larger chunks."
+        },
+        {
+          "id": "agentic.chunking.c5",
+          "type": "mc",
+          "prompt": "Why do contracts specifically punish naive fixed-size chunking?",
+          "options": [
+            "Contracts are too long for any embedding model",
+            "Clauses modify each other through cross-references and defined terms, so a chunk without its heading, exception or definition is misleading",
+            "Legal English uses rare words that embedding models cannot represent",
+            "PDF contracts cannot be parsed into text"
+          ],
+          "answer": 1,
+          "why": "'Subject to Section 4.2' and capitalised Defined Terms make meaning non-local. Structure-aware chunks carry the heading breadcrumb and link to parents and definitions, which fixed windows cannot do. Rare vocabulary is a problem for BM25 and embeddings alike but not the main failure."
+        },
+        {
+          "id": "agentic.chunking.c6",
+          "type": "mc",
+          "prompt": "Bedrock attaches full-page or full-table context to a chunk from parsed content only when that context is at most:",
+          "options": ["1,000 characters", "10,000 characters", "100,000 characters", "There is no limit"],
+          "answer": 1,
+          "why": "Above 10,000 characters the matched chunk is returned as is. The limit exists because the context is stored as vector metadata, which has its own size caps, especially on S3 Vectors."
+        },
+        {
+          "id": "agentic.chunking.c7",
+          "type": "tf",
+          "prompt": "Semantic chunking in Bedrock is free, because it is just a different text splitter.",
+          "answer": false,
+          "why": "Semantic chunking embeds sentence windows with a foundation model to find boundaries, so AWS bills the model usage on top of ingestion. For a 2-million-document corpus that is a line item worth estimating."
+        },
+        {
+          "id": "agentic.chunking.c8",
+          "type": "cloze",
+          "prompt": "Choosing ___ chunking in Bedrock treats each file as a single chunk and removes page numbers from citations.",
+          "answer": "no",
+          "why": "No chunking is the escape hatch for pre-split documents or a custom Lambda transformer, but you lose the x-amz-bedrock-kb-document-page-number metadata, so citations can no longer point to a page."
+        }
+      ],
+      "explain": [
+        {
+          "id": "agentic.chunking.e1",
+          "prompt": "Why do legal documents need structure-aware chunking? Give me the mechanism and one concrete failure.",
+          "seconds": 120,
+          "modelAnswer": "An embedding represents one chunk, so the chunk boundary decides what a vector can mean. Legal documents have non-local meaning: Section 12.3 is 'subject to Section 4.2', Defined Terms are set once in Article 1 and used everywhere, and exceptions sit in the sentence after the obligation. A fixed 300-token window ignores that structure. Concrete failure: a liability cap clause reads 'The Supplier's aggregate liability shall not exceed the Fees paid in the preceding twelve months', and the next sentence says 'This limitation shall not apply to breaches of Section 9 (Confidentiality) or to indemnities under Section 11.' The window ends between them. A lawyer asks whether the cap applies to a confidentiality breach, retrieval returns the first sentence, and the model confidently answers yes, with a citation. Structure-aware chunking splits at Article and Section boundaries, prepends a breadcrumb like 'MSA > Art. 12 Limitation of Liability > 12.3' into the embedded text, stores section and page as metadata, and keeps a parent reference so the model sees the whole clause. The breadcrumb also helps BM25 because the section number is now literally in the chunk.",
+          "rubric": [
+            "Vector meaning is bounded by the chunk boundary",
+            "Cross-references and defined terms make legal meaning non-local",
+            "A concrete clause-split failure with a wrong answer",
+            "Breadcrumb heading embedded into the chunk text",
+            "Parent/child or metadata for section and page",
+            "Benefit for citations or lexical search"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "agentic.chunking.s1",
+          "situation": "A firm has indexed 40,000 master service agreements with fixed 300-token chunks. Associates report that answers about liability caps cite the right agreement but the wrong clause, and exceptions are routinely missed. The index took four days and $3,000 in embedding costs to build. Go-live is in three weeks.",
+          "question": "What change do you make?",
+          "options": [
+            {
+              "text": "Re-chunk along Article/Section structure with heading breadcrumbs and parent/child retrieval, rebuild into a new index alongside the old one, and compare both on a 100-question golden set before switching the alias.",
+              "verdict": "best",
+              "why": "The failure is a chunk-boundary problem, so only a chunking change fixes it. Rebuilding is a known $3,000 and four days, well inside three weeks, and the golden-set comparison turns the change from a hope into a measurement."
+            },
+            {
+              "text": "Raise the fixed chunk size to 1,500 tokens so whole clauses usually fit, and rebuild.",
+              "verdict": "ok",
+              "why": "Bigger windows catch more exceptions and cost the same rebuild, but they dilute the vector, make precision worse, and still cut clauses at arbitrary points. It is a patch, not a fix."
+            },
+            {
+              "text": "Keep the index and raise numberOfResults to 50 so the missing exception is probably somewhere in the prompt.",
+              "verdict": "bad",
+              "why": "Fifty chunks per question multiplies token cost, pushes the relevant text into the middle of a long prompt where models attend poorly, and still returns clauses without their headings. You pay more for the same wrong citations."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agentic.hybrid-search",
+      "title": "Hybrid Search and RRF",
+      "tease": "Your vector index can't find 'Section 12.3(b)'. Your old BM25 index can. Why not use both?",
+      "lesson": {
+        "body": "Lexical and dense retrieval fail differently. BM25 is unbeatable on exact tokens: Bates numbers like `PRIV-0002931`, case numbers, defined terms, 'Section 12.3(b)'. Dense vectors win when the lawyer paraphrases: 'can we walk away without penalty' should find 'termination for convenience'. Hybrid search runs both and merges.\n\nYou cannot add the scores. BM25 is unbounded and corpus-dependent; cosine lives in [-1, 1]. **Reciprocal rank fusion** sidesteps scale entirely: each document scores `sum(1 / (k + rank_i))` over the result lists it appears in, with `k = 60` from Cormack, Clarke and Buettcher (2009). A document ranked 1st in one list and 3rd in the other gets 1/61 + 1/63; a document that appears in only one list needs a very high rank to compete. No tuning, no calibration.\n\nIn Elasticsearch this is the `rrf` retriever wrapping child retrievers, typically a `standard` (BM25) retriever and a `knn` retriever. `rank_constant` defaults to 60 and `rank_window_size` to 10; the window must be at least `size`, and widening it to 50 or 100 improves recall at some CPU cost. Retrievers and RRF went GA together in 8.16, for Enterprise-licensed clusters. A `filter` inside the `knn` clause is applied as a pre-filter during HNSW traversal, so you still get k matching documents. OpenSearch offers the `hybrid` query with a search pipeline: the `normalization-processor` (min_max or l2 normalization; arithmetic, geometric or harmonic mean; per-clause weights) or, since 2.19, the `score-ranker-processor` with `technique: rrf`. OpenSearch's own BEIR benchmark found RRF about 3.86% lower NDCG@10 than a tuned score-normalization pipeline, which is the trade: RRF is the robust default, weighted normalization is what you tune once you have relevance judgments.\n\nYour Elasticsearch background is the edge here. Analyzers, synonyms for legal abbreviations, `match_phrase` for quoted clauses, and `semantic_text` with ELSER as a third sparse signal all still matter inside a RAG system.",
+        "snippet": "GET matters-acme-00123/_search\n{\n  \"size\": 8,\n  \"retriever\": {\n    \"rrf\": {\n      \"rank_constant\": 60,\n      \"rank_window_size\": 50,\n      \"retrievers\": [\n        { \"standard\": { \"query\": { \"bool\": {\n            \"must\":   { \"match\": { \"text\": \"termination for convenience notice period\" } },\n            \"filter\": [ { \"term\": { \"matter_id\": \"acme-00123\" } },\n                        { \"term\": { \"privileged\": false } } ] } } } },\n        { \"knn\": {\n            \"field\": \"vector\", \"k\": 50, \"num_candidates\": 200,\n            \"query_vector_builder\": { \"text_embedding\": {\n                \"model_id\": \"titan-v2\", \"model_text\": \"can we exit without penalty\" } },\n            \"filter\": [ { \"term\": { \"matter_id\": \"acme-00123\" } },\n                        { \"term\": { \"privileged\": false } } ] } }\n      ]\n    }\n  }\n}",
+        "snippetLang": "json",
+        "source": {
+          "title": "RRF retriever - Elasticsearch reference",
+          "url": "https://www.elastic.co/docs/reference/elasticsearch/rest-apis/retrievers/rrf-retriever"
+        }
+      },
+      "cards": [
+        {
+          "id": "agentic.hybrid-search.c1",
+          "type": "mc",
+          "prompt": "How does reciprocal rank fusion score a document that appears in several ranked lists?",
+          "options": [
+            "Average of its normalized scores across lists",
+            "Sum over lists of 1 / (k + rank), with k typically 60",
+            "Its best single rank across lists",
+            "Product of its BM25 score and cosine similarity"
+          ],
+          "answer": 1,
+          "why": "RRF uses only ranks, so BM25 and cosine never need to be made comparable. Averaging normalized scores is the alternative (OpenSearch normalization-processor) and needs min/max or l2 normalization plus weights to tune."
+        },
+        {
+          "id": "agentic.hybrid-search.c2",
+          "type": "cloze",
+          "prompt": "Elasticsearch's rrf retriever has a rank_constant parameter that defaults to ___.",
+          "answer": "60",
+          "why": "k=60 comes from the original 2009 paper and is the default in Elasticsearch and OpenSearch. Larger k flattens the curve so lower-ranked documents matter more; smaller k makes top ranks dominate."
+        },
+        {
+          "id": "agentic.hybrid-search.c3",
+          "type": "mc",
+          "prompt": "Why can't you simply add a BM25 score and a cosine similarity to rank hybrid results?",
+          "options": [
+            "Elasticsearch forbids combining them in one query",
+            "BM25 is unbounded and depends on corpus statistics while cosine is bounded in [-1, 1], so one signal swamps the other",
+            "Cosine similarity is always negative for text",
+            "BM25 scores are integers and cannot be summed with floats"
+          ],
+          "answer": 1,
+          "why": "A BM25 score of 27.4 added to a cosine of 0.81 is just BM25 with noise. You either normalize both (and tune weights) or fuse on ranks with RRF."
+        },
+        {
+          "id": "agentic.hybrid-search.c4",
+          "type": "tf",
+          "prompt": "In an Elasticsearch rrf retriever, rank_window_size must be at least as large as the request's size.",
+          "answer": true,
+          "why": "Each child retriever contributes rank_window_size results to fusion, and the fused list is then trimmed to size; a window smaller than size would make the request incoherent. The default window is 10, which is usually too small for hybrid recall."
+        },
+        {
+          "id": "agentic.hybrid-search.c5",
+          "type": "mc",
+          "prompt": "In OpenSearch, which search-pipeline processor implements reciprocal rank fusion for a hybrid query?",
+          "options": [
+            "normalization-processor",
+            "score-ranker-processor",
+            "rrf-processor",
+            "hybrid-fusion-processor"
+          ],
+          "answer": 1,
+          "why": "score-ranker-processor (added in 2.19) fuses by rank with technique rrf. normalization-processor is the score-based path with min_max/l2 and weighted means; the other two names do not exist and are rejected as invalid processor types."
+        },
+        {
+          "id": "agentic.hybrid-search.c6",
+          "type": "mc",
+          "prompt": "Which query is BM25 most likely to win outright against a dense retriever?",
+          "options": [
+            "'what are our options if the supplier keeps missing deadlines'",
+            "'documents mentioning PRIV-0002931'",
+            "'is there anything about leaving the contract early'",
+            "'who is responsible when a subcontractor messes up'"
+          ],
+          "answer": 1,
+          "why": "A Bates number is a rare exact token; embeddings tokenize it into fragments and lose it, while BM25 matches it precisely. The others are paraphrases where dense retrieval shines, which is the whole case for hybrid."
+        },
+        {
+          "id": "agentic.hybrid-search.c7",
+          "type": "tf",
+          "prompt": "In OpenSearch's published BEIR benchmarks, RRF outperformed tuned score normalization on NDCG@10.",
+          "answer": false,
+          "why": "RRF averaged about 3.86% lower NDCG@10 than the tuned normalization pipeline, with comparable latency. RRF wins on robustness and zero tuning; once you have relevance judgments, weighted normalization can edge it."
+        },
+        {
+          "id": "agentic.hybrid-search.c8",
+          "type": "cloze",
+          "prompt": "In Elasticsearch, a filter placed inside the knn clause is applied as a ___-filter during the HNSW search, so k matching documents are still returned.",
+          "answer": "pre",
+          "why": "A pre-filter restricts the graph traversal to allowed documents. A post_filter runs after the top-k is chosen and can leave you with far fewer than k results, which matters when the filter is a strict permission boundary."
+        }
+      ],
+      "explain": [
+        {
+          "id": "agentic.hybrid-search.e1",
+          "prompt": "Explain hybrid search and reciprocal rank fusion to me as if I had only ever used Elasticsearch for keyword search.",
+          "seconds": 120,
+          "modelAnswer": "You already have half of it. BM25 scores documents on term matches, so it is excellent at exact things: Bates numbers, clause numbers, defined terms. What it cannot do is understand that 'leave the contract early' means 'termination for convenience'. Vector search fixes that: an embedding model turns both the question and each chunk into a vector, and kNN on a dense_vector field finds chunks whose meaning is close even when no words overlap. Hybrid search runs both queries and merges the results. The catch is that a BM25 score of 27 and a cosine of 0.8 cannot be added. Reciprocal rank fusion ignores scores and uses ranks: each document gets the sum over the lists of 1 divided by 60 plus its rank. Something ranked first in both lists scores about 0.033; something ranked first in one and absent from the other scores about 0.016. In Elasticsearch this is the rrf retriever with a standard child and a knn child; rank_constant defaults to 60 and I would raise rank_window_size from 10 to 50. Your analyzers, synonyms and filters still apply, so nothing you know is wasted.",
+          "rubric": [
+            "BM25 strengths (exact tokens) vs dense strengths (paraphrase)",
+            "Why raw scores cannot be summed",
+            "RRF formula with k=60 and a worked rank example",
+            "Elasticsearch rrf retriever with standard and knn children",
+            "Mentions rank_window_size or filters still applying"
+          ]
+        },
+        {
+          "id": "agentic.hybrid-search.e2",
+          "prompt": "When would you choose weighted score normalization over RRF, and what would you need first?",
+          "seconds": 120,
+          "modelAnswer": "RRF is my default because it needs no tuning and is robust to a bad sub-retriever: a document only ranks high if it ranks high somewhere. But it throws away score magnitude. If BM25 is extremely confident, say an exact Bates number match with a score ten times the runner-up, RRF treats it as just 'rank one', the same as a marginal first place. Weighted normalization keeps that gap: min-max or l2 normalize each list, then combine with weights, for example 0.7 lexical and 0.3 semantic for an identifier-heavy eDiscovery workload. OpenSearch's own benchmarks show a tuned normalization pipeline beating RRF by a few percent of NDCG@10. The precondition is relevance judgments: a golden set of queries with labelled relevant chunks so I can actually measure NDCG and pick weights, and ideally per-query-type routing, because the right weights for identifier lookups differ from those for conceptual questions. Without judgments, tuning weights is guessing, and RRF's zero-tuning behaviour is the safer production choice. So: ship RRF, build the golden set, then test normalization as an A/B.",
+          "rubric": [
+            "RRF discards score magnitude; normalization keeps it",
+            "Normalization needs weights, and weights need relevance judgments",
+            "Mentions min_max/l2 and weighted combination",
+            "Cites the benchmark direction (tuned normalization slightly ahead)",
+            "Recommends RRF first, measure, then tune"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "agentic.hybrid-search.s1",
+          "situation": "An eDiscovery review team's new semantic search over 1.2 million emails misses exact Bates numbers and defined terms, which paralegals search for constantly. The firm already runs an OpenSearch cluster for its legacy keyword review tool. The vendor who built the vector search proposes fine-tuning the embedding model on legal data.",
+          "question": "What do you recommend?",
+          "options": [
+            {
+              "text": "Add a hybrid query with a BM25 clause and a kNN clause fused by RRF in the existing OpenSearch cluster, and verify on a set of paralegal queries that identifiers now hit.",
+              "verdict": "best",
+              "why": "Exact identifiers are a lexical problem and BM25 solves it immediately; the cluster and the review team's expectations already exist. RRF needs no tuning and the fix can ship in days with a measurable before/after."
+            },
+            {
+              "text": "Fine-tune the embedding model on the firm's legal corpus so it represents Bates numbers and defined terms better.",
+              "verdict": "ok",
+              "why": "Domain fine-tuning can lift semantic recall, but embeddings fundamentally blur rare identifiers, the training data is privileged, and it forces a full re-embed of 1.2 million emails. It is a later optimisation, not the fix for exact-match misses."
+            },
+            {
+              "text": "Raise k from 10 to 200 on the vector query so the exact matches are more likely to appear somewhere in the results.",
+              "verdict": "bad",
+              "why": "A Bates number the embedding never represented will not surface at k=200 either, and reviewers now wade through 200 results. It raises cost and latency without addressing the cause."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agentic.rerank-acl",
+      "title": "Rerankers and Permission Filters",
+      "tease": "The reranker scored it 0.97. The associate wasn't cleared to see it. Which check runs first?",
+      "lesson": {
+        "body": "Retrieval is two stages because the cheap stage is wrong at the top. A bi-encoder scores query and document independently, so document vectors can be precomputed and searched in milliseconds, but the model never sees query and passage together. A **cross-encoder reranker** reads the pair `(query, passage)` jointly and emits a relevance score. It cannot be precomputed, so you run it on the top 50-100 candidates from hybrid search and keep the best 5-10 for the prompt. Fewer, better chunks means a shorter prompt and a cheaper, more faithful answer.\n\nOn AWS the `Rerank` API in `bedrock-agent-runtime` serves `cohere.rerank-v3-5:0` and `amazon.rerank-v1:0` (the Amazon model is not offered in us-east-1), and Knowledge Bases accepts a `rerankingConfiguration` on `Retrieve`. Elasticsearch has the `text_similarity_reranker` retriever, defaulting to the built-in `.rerank-v1-elasticsearch` endpoint with `rank_window_size` 10, and it can call Cohere or Vertex rerank endpoints instead.\n\n**Metadata filters are the security boundary.** Every chunk carries `client_id`, `matter_id`, `custodian`, `doc_date` and privilege flags. The filter is derived server-side from the authenticated user's entitlements and pushed into the retrieval query, exactly as a C# authorization handler appends `WHERE tenant_id = @tenant` to every query, or as SQL Server row-level security does. In Elasticsearch, document level security turns a role query into a cached BitSet so kNN only traverses permitted documents, and a `filter` inside `knn` is a pre-filter. In OpenSearch, efficient filtering requires the lucene or faiss engine (nmslib post-filters and is deprecated), which is why Bedrock Knowledge Bases requires `faiss` for metadata filtering. Bedrock filters come from `<file>.<ext>.metadata.json` sidecars and use `equals`, `in`, `greaterThan` and friends, combined with `andAll`/`orAll`, up to five per group.\n\nPost-filtering is a trap: retrieve k=10, then drop forbidden documents, and you return three results or none, having already looked at documents the user may not see. The model is never the gate; the query is.",
+        "snippet": "GET matters-*/_search\n{\n  \"retriever\": {\n    \"text_similarity_reranker\": {\n      \"inference_id\": \"cohere-rerank-3-5\",\n      \"inference_text\": \"notice period for termination for convenience\",\n      \"field\": \"text\",\n      \"rank_window_size\": 50,\n      \"retriever\": {\n        \"rrf\": {\n          \"rank_window_size\": 50,\n          \"retrievers\": [\n            { \"standard\": { \"query\": { \"match\": { \"text\": \"termination convenience notice\" } } } },\n            { \"knn\": { \"field\": \"vector\", \"k\": 50, \"num_candidates\": 200,\n                       \"query_vector\": \"<query embedding>\" } }\n          ]\n        }\n      },\n      \"filter\": { \"bool\": { \"filter\": [\n        { \"terms\": { \"matter_id\": \"<from entitlement service, never the request body>\" } },\n        { \"term\":  { \"privileged\": false } } ] } }\n    }\n  }\n}",
+        "snippetLang": "json",
+        "source": {
+          "title": "Text similarity re-ranker retriever - Elasticsearch reference",
+          "url": "https://www.elastic.co/docs/reference/elasticsearch/rest-apis/retrievers/text-similarity-reranker-retriever"
+        }
+      },
+      "cards": [
+        {
+          "id": "agentic.rerank-acl.c1",
+          "type": "mc",
+          "prompt": "What makes a cross-encoder reranker more accurate than the first-stage vector search, and why can't it replace it?",
+          "options": [
+            "It uses a larger embedding dimension; it is simply more expensive to store",
+            "It scores query and passage jointly in one forward pass, so it cannot be precomputed and must run only on a shortlist",
+            "It is trained on legal data; it needs a GPU",
+            "It uses BM25 internally; it cannot handle paraphrase"
+          ],
+          "answer": 1,
+          "why": "Seeing the pair together lets the model weigh exactly how the passage answers the query, but that means one inference per (query, document) pair at request time. Bi-encoders precompute document vectors, which is why they handle the first stage over millions of chunks."
+        },
+        {
+          "id": "agentic.rerank-acl.c2",
+          "type": "mc",
+          "prompt": "Which reranker models does the Amazon Bedrock Rerank API support?",
+          "options": [
+            "Cohere Rerank 3.5 and Amazon Rerank 1.0",
+            "Cohere Rerank 2 and Titan Rerank",
+            "Any Bedrock text model with a rerank prompt",
+            "Elastic Rerank and Cohere Rerank 3.5"
+          ],
+          "answer": 0,
+          "why": "The two model IDs are cohere.rerank-v3-5:0 and amazon.rerank-v1:0. Elastic Rerank is Elasticsearch's built-in model, and using a general text model as a reranker is possible but far slower and more expensive per pair."
+        },
+        {
+          "id": "agentic.rerank-acl.c3",
+          "type": "tf",
+          "prompt": "Amazon Rerank 1.0 is available in US East (N. Virginia).",
+          "answer": false,
+          "why": "AWS documents that only Cohere Rerank 3.5 is offered in us-east-1; Amazon Rerank 1.0 is in Oregon, Frankfurt, Tokyo and Canada (Central). For a European client, Frankfurt supports both."
+        },
+        {
+          "id": "agentic.rerank-acl.c4",
+          "type": "cloze",
+          "prompt": "Elasticsearch's text_similarity_reranker retriever defaults its inference_id to ___.",
+          "answer": ".rerank-v1-elasticsearch",
+          "why": "That is Elastic's built-in cross-encoder, so a reranking stage needs no external API. Point inference_id at a Cohere or Vertex endpoint if you want a different model."
+        },
+        {
+          "id": "agentic.rerank-acl.c5",
+          "type": "mc",
+          "prompt": "Where should 'this associate may not see Matter B' be enforced in a RAG system?",
+          "options": [
+            "In the system prompt: instruct the model never to reveal documents from other matters",
+            "As a filter on matter_id derived from the authenticated identity and applied inside the retrieval query",
+            "By post-processing the answer and redacting mentions of Matter B",
+            "By asking the model to check permissions with a tool before answering"
+          ],
+          "answer": 1,
+          "why": "Only a retrieval-time filter guarantees forbidden text never enters the prompt. Prompts can be jailbroken, redaction misses paraphrase, and a model-initiated permission check is optional by construction."
+        },
+        {
+          "id": "agentic.rerank-acl.c6",
+          "type": "mc",
+          "prompt": "You run kNN with k=10 and then remove documents the user cannot access. What is the most likely visible symptom?",
+          "options": [
+            "Results are slower because the filter runs twice",
+            "You return far fewer than 10 results, sometimes none, even when permitted relevant documents exist",
+            "Duplicate documents appear in the results",
+            "The vector scores become negative"
+          ],
+          "answer": 1,
+          "why": "Post-filtering discards hits after the top-k was already chosen. If most near neighbours belong to other matters, nothing survives. Pre-filtering inside the knn clause keeps traversing until k permitted documents are found."
+        },
+        {
+          "id": "agentic.rerank-acl.c7",
+          "type": "tf",
+          "prompt": "For Bedrock Knowledge Bases on OpenSearch Serverless, metadata filtering requires the vector index to use the faiss engine rather than nmslib.",
+          "answer": true,
+          "why": "Efficient (pre-)filtering in OpenSearch is supported by the lucene and faiss engines; nmslib only post-filters and is deprecated. AWS tells you to recreate the index with faiss if you built it with nmslib."
+        },
+        {
+          "id": "agentic.rerank-acl.c8",
+          "type": "cloze",
+          "prompt": "In an S3 data source for Bedrock Knowledge Bases, filterable attributes for contract.pdf live in a sidecar file named contract.pdf.___ .",
+          "answer": "metadata.json",
+          "why": "The <file>.<ext>.metadata.json convention is how matter_id, custodian, privilege and dates become filterable at query time. Forgetting the sidecar silently makes those documents unfilterable, which in a permission filter means they are excluded or exposed depending on your default."
+        }
+      ],
+      "explain": [
+        {
+          "id": "agentic.rerank-acl.e1",
+          "prompt": "How do you make sure a lawyer never sees a document from a matter they are walled off from?",
+          "seconds": 120,
+          "modelAnswer": "I treat it like row-level security, not like a prompt problem. Every chunk is indexed with matter_id, client_id, custodian and a privilege flag, so the data carries its own labels. At request time the API authenticates the user and asks an entitlement service which matters they may see; the ethical wall lives there, maintained by risk and compliance, not in my code. That list becomes a filter that I inject into the retrieval query server-side, inside the knn clause and the BM25 clause, so it is a pre-filter: the vector search never traverses forbidden documents and I still get k permitted results. Nothing from the request body can widen it. Deny by default: no entitlement, no results. The reranker and the model only ever see what survived the filter, so even a jailbreak cannot surface a walled-off document. Then I log the filter and the chunk ids on every request, so an auditor can prove what the user could and could not see. The model is never the gate, because a gate the model can skip is not a gate.",
+          "rubric": [
+            "Permission attributes indexed on every chunk",
+            "Entitlements resolved server-side from the authenticated identity",
+            "Filter applied as a pre-filter inside the retrieval query",
+            "Deny by default, nothing client-supplied can widen the filter",
+            "Audit logging of filter and chunk ids",
+            "Explicitly rejects prompt instructions as the control"
+          ]
+        },
+        {
+          "id": "agentic.rerank-acl.e2",
+          "prompt": "Why add a reranker if hybrid search already works, and what does it cost you?",
+          "seconds": 120,
+          "modelAnswer": "Hybrid search is good at recall: the right chunk is usually somewhere in the top 50. It is weaker at precision at the top, because the bi-encoder scored the question and the chunk separately and never read them together. A cross-encoder reranker reads each (question, chunk) pair jointly and re-scores the shortlist, so the eight chunks I put in the prompt are the eight that actually answer the question. That buys three things: better faithfulness, because the model is not distracted by near-misses; a shorter prompt, so lower generation cost; and clean citations, because the top chunk is the right clause. Anthropic's numbers show this: contextual hybrid retrieval cut failures by 49%, adding a reranker took it to 67%. The costs are per-query latency, in my experience tens to a couple of hundred milliseconds for a 50-pair shortlist depending on passage length and the hosted model, a per-request fee for a hosted model like Cohere Rerank 3.5 on Bedrock, and operational dependency on another endpoint. I keep the shortlist to 50-100 and skip reranking for identifier lookups where BM25 is already exact.",
+          "rubric": [
+            "Bi-encoder vs cross-encoder distinction",
+            "Reranker improves precision at the top of the list",
+            "Benefits: faithfulness, shorter prompt, better citations",
+            "Costs: latency, per-call fee, extra dependency",
+            "Shortlist size (50-100) and when to skip"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "agentic.rerank-acl.s1",
+          "situation": "A firm's conflicts team has erected an ethical wall: associates on Matter A must not see anything from Matter B, which involves the opposing party. Both matters are indexed in the same OpenSearch cluster. During testing, an associate on Matter A asks a broad question and the answer cites a Matter B email. The system prompt already says 'only use documents from the user's matters'.",
+          "question": "How do you fix it before go-live?",
+          "options": [
+            {
+              "text": "Resolve the user's permitted matter ids from the entitlement system on every request and apply them as a pre-filter inside both the kNN and BM25 clauses, deny by default, and add a test that replays the leaking question for a Matter A user.",
+              "verdict": "best",
+              "why": "The leak proves the prompt is not a control. A server-derived pre-filter means Matter B chunks never enter retrieval, the reranker, or the prompt, and the regression test keeps it that way."
+            },
+            {
+              "text": "Keep retrieval as is but drop any chunk whose matter_id is not permitted after retrieval and before the prompt is built.",
+              "verdict": "ok",
+              "why": "This does stop the leak into the prompt, but it is post-filtering: results shrink unpredictably, forbidden documents are still fetched and scored, and a bug in that one function leaks everything. Push the filter into the query."
+            },
+            {
+              "text": "Strengthen the system prompt with explicit matter ids and add a line telling the model to refuse if it is unsure.",
+              "verdict": "bad",
+              "why": "The forbidden text is already in the prompt at that point; one injection or one model slip and it is on screen. A regulator will not accept 'we asked the model nicely' as an ethical wall."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agentic.embeddings",
+      "title": "Embedding Models",
+      "tease": "You upgraded the embedding model on Friday. By Monday half of search returned garbage. What broke?",
+      "lesson": {
+        "body": "An embedding model maps text to a fixed-length vector so that nearby vectors mean similar things. Query and documents must be embedded by the same model and version; vectors from different models live in unrelated spaces, so a mixed index returns confident nonsense. That one fact drives most of the operations.\n\nKnow the shapes. Amazon Titan Text Embeddings V2 (`amazon.titan-embed-text-v2:0`) takes up to 8,192 tokens or 50,000 characters and outputs 1,024 dimensions by default, with 512 and 256 available; AWS reports about 99% of retrieval accuracy retained at 512 and 97% at 256. Cohere Embed v4 defaults to 1,536 dimensions (256/512/1024/1536 selectable), accepts 128k tokens, and embeds images and PDFs as well as text. OpenAI's text-embedding-3-large is 3,072 dimensions. Inputs longer than the limit get truncated or rejected depending on the SDK, so chunk before you embed.\n\nDimensions cost memory. One float32 1,024-dim vector is 4 KB; 2 million documents at five chunks each is 10 million vectors, about 40 GB raw before the HNSW graph. Quantization is how production survives: Elasticsearch has indexed float vectors as `int8_hnsw` by default since 8.14 (4x smaller), switched the default to `bbq_hnsw` for 384+ dimensions in 9.1 (around 32x), and added `bbq_disk` in 9.2, which becomes the default under an Enterprise licence in 9.4. HNSW defaults are `m: 16` and `ef_construction: 100`, and a `dense_vector` field caps at 4,096 dimensions.\n\nRe-embed when the model, its version or the chunking changes, never because one document changed; a changed document re-embeds only its own chunks. Treat a model change as a blue/green reindex: build the new index alongside the old one, embed queries with the new model only against the new index, run the golden set on both, then flip an alias, the same way you would roll an Elasticsearch mapping change.",
+        "snippet": "PUT matters-acme-00123-v2\n{\n  \"mappings\": {\n    \"properties\": {\n      \"text\":       { \"type\": \"text\", \"analyzer\": \"english\" },\n      \"matter_id\":  { \"type\": \"keyword\" },\n      \"privileged\": { \"type\": \"boolean\" },\n      \"doc_date\":   { \"type\": \"date\" },\n      \"section\":    { \"type\": \"keyword\" },\n      \"embed_model\": { \"type\": \"keyword\" },        // e.g. titan-embed-text-v2:0/1024\n      \"vector\": {\n        \"type\": \"dense_vector\",\n        \"dims\": 1024,\n        \"similarity\": \"cosine\",\n        \"index_options\": { \"type\": \"bbq_hnsw\", \"m\": 16, \"ef_construction\": 100 }\n      }\n    }\n  }\n}\n\n// cut-over after the golden set passes on v2:\nPOST _aliases\n{ \"actions\": [ { \"remove\": { \"index\": \"matters-acme-00123-v1\", \"alias\": \"matters-acme-00123\" } },\n               { \"add\":    { \"index\": \"matters-acme-00123-v2\", \"alias\": \"matters-acme-00123\" } } ] }",
+        "snippetLang": "json",
+        "source": {
+          "title": "Amazon Titan Text Embeddings models - Amazon Bedrock",
+          "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/titan-embedding-models.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "agentic.embeddings.c1",
+          "type": "mc",
+          "prompt": "What is the maximum input for Amazon Titan Text Embeddings V2?",
+          "options": [
+            "512 tokens",
+            "2,048 tokens",
+            "8,192 tokens or 50,000 characters",
+            "128,000 tokens"
+          ],
+          "answer": 2,
+          "why": "Titan V2 accepts 8,192 tokens or 50,000 characters, whichever is hit first. 128k is Cohere Embed v4's limit, and 512 was typical of older BERT-style models; AWS still recommends chunking into paragraphs or sections rather than embedding whole documents."
+        },
+        {
+          "id": "agentic.embeddings.c2",
+          "type": "mc",
+          "prompt": "A deploy switched the query embedding to a new model while the index still holds vectors from the old one. Both are 1,024 dimensions. What happens?",
+          "options": [
+            "Nothing; same dimensions means compatible vectors",
+            "Elasticsearch rejects the query with a dimension error",
+            "Queries run without error but return semantically unrelated chunks",
+            "Only recall drops slightly because the models are similar"
+          ],
+          "answer": 2,
+          "why": "Matching dimension counts let the query execute, but the two models' spaces are unrelated, so nearest neighbours are effectively random. This is the silent failure mode; a dimension mismatch would at least fail loudly."
+        },
+        {
+          "id": "agentic.embeddings.c3",
+          "type": "tf",
+          "prompt": "Reducing Titan V2 output from 1,024 to 512 dimensions loses roughly half of its retrieval accuracy.",
+          "answer": false,
+          "why": "AWS reports about 99% of retrieval accuracy retained at 512 and about 97% at 256, while halving or quartering vector storage. Dimension reduction is one of the cheapest cost levers you have."
+        },
+        {
+          "id": "agentic.embeddings.c4",
+          "type": "cloze",
+          "prompt": "An Elasticsearch dense_vector field can have at most ___ dimensions.",
+          "answer": "4096",
+          "why": "4,096 is the hard cap, comfortably above text-embedding-3-large's 3,072. If dims is omitted it is set from the first vector indexed, which is a classic way to lock in the wrong size."
+        },
+        {
+          "id": "agentic.embeddings.c5",
+          "type": "mc",
+          "prompt": "Roughly how much raw memory do 10 million float32 vectors of 1,024 dimensions need, before any graph overhead or quantization?",
+          "options": ["4 GB", "10 GB", "40 GB", "400 GB"],
+          "answer": 2,
+          "why": "1,024 dims times 4 bytes is 4 KB per vector; times 10 million is about 40 GB. That number is why int8 (4x smaller) and BBQ (~32x smaller) quantization matter for a 2-million-document corpus."
+        },
+        {
+          "id": "agentic.embeddings.c6",
+          "type": "mc",
+          "prompt": "In Elasticsearch 9.1 and later, what is the default index_options type for a 1,024-dimension float dense_vector?",
+          "options": ["hnsw", "int8_hnsw", "bbq_hnsw", "flat"],
+          "answer": 2,
+          "why": "From 9.1, fields with 384 or more dimensions default to bbq_hnsw (binary quantization, about 32x smaller) and smaller fields to int8_hnsw. From 8.14 through 9.0 the default was int8_hnsw for all float vectors, which is what many candidates still quote."
+        },
+        {
+          "id": "agentic.embeddings.c7",
+          "type": "tf",
+          "prompt": "When an amended version of one contract is uploaded, the entire corpus must be re-embedded to keep the index consistent.",
+          "answer": false,
+          "why": "Embeddings are per chunk and independent of other documents, so only the changed document's chunks are re-embedded and upserted. Full re-embedding is needed only when the model, its version or the chunking strategy changes."
+        },
+        {
+          "id": "agentic.embeddings.c8",
+          "type": "cloze",
+          "prompt": "Cohere Embed v4 outputs ___ dimensions by default.",
+          "answer": "1536",
+          "why": "Embed v4 defaults to 1,536 and lets you request 256, 512 or 1,024 instead, with a 128k-token context and multimodal input. Knowing the defaults matters because dims is baked into the index mapping."
+        }
+      ],
+      "explain": [
+        {
+          "id": "agentic.embeddings.e1",
+          "prompt": "How do you roll out a new embedding model to a live index without downtime or mixed results?",
+          "seconds": 120,
+          "modelAnswer": "The rule is that queries and documents must share a model, so I never mutate the live index in place. I treat it as a blue/green reindex, exactly like an Elasticsearch mapping change. First, create a new index with the new dims and quantization settings and an embed_model field recording the model id. Second, re-embed the whole corpus into it from the source documents, not from old vectors, in a batch job that is idempotent on document id plus content hash, so it can resume. Meanwhile the live alias still points at the old index and the old query path still uses the old model. Third, run the golden set against both indexes, each with its own query model, and compare recall@k and faithfulness; a new model is not automatically better on legal text. Fourth, flip the alias and the query-side model id in the same deploy, ideally behind a feature flag per client. Keep the old index for a week for rollback. Cost-wise, 10 million chunks through Titan V2 is a known embedding bill and a few hours of batch time, so this is routine rather than scary.",
+          "rubric": [
+            "Never mix models in one index; build a second index",
+            "Re-embed from source documents, idempotent batch",
+            "Compare old vs new on a golden set before switching",
+            "Atomic cut-over of alias and query model together",
+            "Rollback path and cost estimate"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "agentic.embeddings.s1",
+          "situation": "A Fortune 100 legal department's RAG platform holds 12 million chunks as 1,024-dim float32 vectors on OpenSearch Serverless. The monthly bill is three times what finance approved, and most of it is vector-index capacity. The GC's office wants the cost halved within a quarter without hurting answer quality.",
+          "question": "What is your plan?",
+          "options": [
+            {
+              "text": "Measure recall@10 on the golden set at 1,024 vs 512 dimensions and with int8/binary quantization, pick the smallest configuration that stays within a point of baseline, and rebuild the index blue/green with that setting.",
+              "verdict": "best",
+              "why": "Titan V2 at 512 dims keeps about 99% of retrieval accuracy and halves storage; quantization cuts it further. Doing it against the golden set makes 'without hurting quality' a measurement, and blue/green keeps the live system untouched until proven."
+            },
+            {
+              "text": "Move archived matters' vectors to Amazon S3 Vectors, which is far cheaper per vector, and keep only active matters in OpenSearch.",
+              "verdict": "ok",
+              "why": "S3 Vectors (GA December 2025) is a legitimate cold tier at up to 90% lower cost, but it has higher query latency and limits on hierarchical chunking and filters, and it adds a second query path to maintain. Good as a second step after shrinking the hot index."
+            },
+            {
+              "text": "Disable the vector index and serve answers from BM25 only, since the keyword index is cheap and lawyers know how to phrase searches.",
+              "verdict": "bad",
+              "why": "You would meet the cost target by removing the capability the platform was bought for: paraphrase and concept questions. Quality would collapse on exactly the questions the GC's team asks."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agentic.rag-evals",
+      "title": "Evaluating RAG",
+      "tease": "The demo looked perfect. The golden set said 61% faithful. Which one do you believe?",
+      "lesson": {
+        "body": "You cannot improve what you only measure with a demo. A RAG evaluation separates the two things that can fail. **Retrieval** is scored against labelled relevant chunks with plain IR metrics: recall@k (did a relevant chunk appear in the top k), precision@k, MRR, nDCG. No LLM is involved, so it is fast, cheap and deterministic, and it tells you whether to fix chunking and search or the prompt. **Generation** is scored on the chunks the system actually retrieved.\n\nRAGAS names the standard generation metrics (in the current `ragas.metrics.collections` API: `Faithfulness`, `AnswerRelevancy`, `ContextPrecision`, `ContextRecall`; the older `ragas.metrics` classes such as `ResponseRelevancy` still work but are slated for removal). *Faithfulness* decomposes the answer into claims and asks a judge whether each is supported by the retrieved context; the score is supported claims over total claims, 0 to 1. *Response relevancy* has the judge write N questions (default 3) that the answer would answer, embeds them, and averages cosine similarity to the real question, so padding and evasion score low. *Context precision* checks that relevant chunks rank above irrelevant ones; *context recall* needs a reference answer and checks whether the retrieved context could support it.\n\nThe judge is itself a model and inherits the biases documented by Zheng et al. (2023): position bias (prefers the first candidate), verbosity bias (longer looks better), self-preference (prefers its own family's style). Mitigate with pointwise rubrics instead of pairwise comparison, swapped orderings when you must compare, a judge from a different model family than the generator, and calibration: have lawyers grade 50-100 items and report agreement with the judge before you trust its numbers.\n\nThe **golden set** is the asset. Start with 100-200 questions written by the people who will use the system, stratified by type: single-clause lookup, cross-document synthesis, date arithmetic, and unanswerable questions where the right answer is 'not in these documents'. Version it, run it in CI on every prompt or index change, gate deploys on regressions, and feed every production failure back into it.",
+        "snippet": "from ragas import evaluate, EvaluationDataset\n# legacy metric classes: still supported, deprecated in ragas 0.4, removed in 1.0.\n# new code: from ragas.metrics.collections import Faithfulness, AnswerRelevancy, ContextRecall, ContextPrecision\nfrom ragas.metrics import Faithfulness, ResponseRelevancy, LLMContextRecall, LLMContextPrecisionWithReference\n\n# one row per golden question; retrieved_contexts come from YOUR pipeline, not hand-picked\nrows = [{\n    \"user_input\": \"Does the liability cap apply to confidentiality breaches?\",\n    \"retrieved_contexts\": [c.text for c in pipeline.retrieve(q, user=test_lawyer)],\n    \"response\": pipeline.answer(q, user=test_lawyer).text,\n    \"reference\": \"No. Section 12.3 excludes breaches of Section 9 from the cap.\",\n} for q in golden_set]\n\nresult = evaluate(\n    EvaluationDataset.from_list(rows),\n    metrics=[Faithfulness(), ResponseRelevancy(), LLMContextRecall(), LLMContextPrecisionWithReference()],\n    llm=judge_llm,            # a different model family than the generator\n    embeddings=judge_embeddings,\n)\ndf = result.to_pandas()\nassert df[\"faithfulness\"].mean() >= BASELINE_FAITHFULNESS - 0.02   # CI gate\nassert df[\"context_recall\"].mean() >= BASELINE_RECALL - 0.02",
+        "snippetLang": "python",
+        "source": {
+          "title": "Faithfulness - Ragas documentation",
+          "url": "https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/faithfulness/"
+        }
+      },
+      "cards": [
+        {
+          "id": "agentic.rag-evals.c1",
+          "type": "mc",
+          "prompt": "How does RAGAS compute Faithfulness?",
+          "options": [
+            "Cosine similarity between the answer and the retrieved context",
+            "Number of answer claims supported by the retrieved context divided by total claims",
+            "Fraction of retrieved chunks that are quoted in the answer",
+            "A single 1-10 rating from the judge model"
+          ],
+          "answer": 1,
+          "why": "The answer is decomposed into atomic claims and each is checked against the context; 3 of 4 supported gives 0.75. Cosine similarity would reward an answer that paraphrases the context without being correct about the question."
+        },
+        {
+          "id": "agentic.rag-evals.c2",
+          "type": "mc",
+          "prompt": "How does RAGAS Response Relevancy work?",
+          "options": [
+            "The judge rates whether the answer is relevant on a 0-1 scale",
+            "The judge generates N questions (default 3) the answer would answer, and their embeddings are compared by cosine similarity to the original question",
+            "It counts keyword overlap between the question and the answer",
+            "It checks whether the answer cites at least one retrieved chunk"
+          ],
+          "answer": 1,
+          "why": "Reverse-engineering questions from the answer and averaging their similarity to the real question penalises answers that wander, pad or dodge. It needs an embedding model as well as a judge, and it says nothing about factual accuracy."
+        },
+        {
+          "id": "agentic.rag-evals.c3",
+          "type": "tf",
+          "prompt": "Context recall can be computed from the question and retrieved chunks alone, without a reference answer.",
+          "answer": false,
+          "why": "Context recall asks whether the retrieved context could support the reference answer, so it requires the reference. Faithfulness and response relevancy are the reference-free metrics; that is why they are cheap to run on production traffic."
+        },
+        {
+          "id": "agentic.rag-evals.c4",
+          "type": "cloze",
+          "prompt": "A judge model that systematically prefers whichever answer is shown first exhibits ___ bias.",
+          "answer": "position",
+          "why": "Documented in Zheng et al. (2023) along with verbosity and self-preference bias. The fix for pairwise judging is to evaluate both orderings and count a win only if it holds in both."
+        },
+        {
+          "id": "agentic.rag-evals.c5",
+          "type": "mc",
+          "prompt": "Which metric isolates retriever quality and needs no LLM at all?",
+          "options": [
+            "Faithfulness",
+            "Response relevancy",
+            "recall@k against labelled relevant chunks",
+            "Answer correctness"
+          ],
+          "answer": 2,
+          "why": "Given a golden set that names which chunks are relevant, recall@k is a set intersection: deterministic, free and fast enough for every commit. The LLM-based metrics evaluate generation and cost money per run."
+        },
+        {
+          "id": "agentic.rag-evals.c6",
+          "type": "mc",
+          "prompt": "A system scores 0.95 faithfulness but 0.40 response relevancy. What is the most likely diagnosis?",
+          "options": [
+            "The model is hallucinating facts not in the context",
+            "The model sticks to the retrieved context but is not answering the question that was asked",
+            "The retriever returned no documents",
+            "The judge model is broken"
+          ],
+          "answer": 1,
+          "why": "High faithfulness means every claim is grounded; low relevancy means those grounded claims do not address the question, typically because retrieval brought back adjacent but wrong passages. Hallucination would show as low faithfulness."
+        },
+        {
+          "id": "agentic.rag-evals.c7",
+          "type": "tf",
+          "prompt": "Using the same model as both generator and judge is best practice because it understands the task it was given.",
+          "answer": false,
+          "why": "Models show self-preference bias, rating their own style higher. Use a judge from a different family, or at least a stronger model, and calibrate it against human labels before trusting the numbers."
+        },
+        {
+          "id": "agentic.rag-evals.c8",
+          "type": "cloze",
+          "prompt": "A golden set should include ___ questions, whose correct answer is 'not in these documents', to measure whether the system knows when to abstain.",
+          "answer": "unanswerable",
+          "why": "Without them a system that always produces a confident answer scores perfectly on faithfulness-style metrics while being dangerous in practice. Abstention rate on unanswerable questions is a first-class metric for legal work."
+        }
+      ],
+      "explain": [
+        {
+          "id": "agentic.rag-evals.e1",
+          "prompt": "You have zero labelled data on day one. How do you build an evaluation set for a legal Q&A system?",
+          "seconds": 120,
+          "modelAnswer": "I start with the people who will use it. In the first week I sit with two or three associates and collect 100 to 150 real questions they would ask over a known matter, and for each one they point me at the clause or email that answers it and write a one-line reference answer. That gives me labelled relevant chunks for recall@k and a reference for context recall and correctness. I stratify deliberately: single-clause lookups, questions that span documents, date and amount questions, and about 15% unanswerable ones so I can measure abstention. To widen coverage cheaply I generate synthetic questions from randomly sampled chunks with a model, then have a lawyer skim and delete the silly ones; the generating chunk is the label. I version the set in git next to the code, run retrieval metrics on every commit and the LLM-judged metrics nightly, and record a baseline before any tuning. From go-live, every thumbs-down and every corrected answer becomes a new row, so the set grows from real failures rather than my imagination.",
+          "rubric": [
+            "Domain experts write real questions with reference chunks and answers",
+            "Stratified by question type including unanswerable",
+            "Synthetic questions from chunks, human-filtered",
+            "Versioned and run in CI with a recorded baseline",
+            "Production failures feed back into the set"
+          ]
+        },
+        {
+          "id": "agentic.rag-evals.e2",
+          "prompt": "What are the failure modes of LLM-as-a-judge, and how do you keep the judge honest?",
+          "seconds": 120,
+          "modelAnswer": "A judge is another model with its own biases, so I treat its output as a measurement instrument that needs calibration. The known failures: position bias, where in pairwise comparisons the first answer wins more often; verbosity bias, where longer answers look more thorough; self-preference, where a model rates its own family's style higher; and rubric drift, where a vague 'rate 1-10' prompt gives inconsistent numbers. Mitigations: prefer pointwise scoring against an explicit rubric, for example faithfulness as supported claims over total claims, because it is more stable than pairwise; when I must compare, run both orderings and count a win only if it survives the swap; use a judge from a different family and ideally a stronger tier than the generator; pin the judge model version so scores are comparable over time; and most importantly calibrate, having lawyers grade 50 to 100 items and reporting agreement with the judge. If agreement is poor, the metric is noise and I fix the rubric before trusting any trend. I also spot-check judge explanations, because a judge that says 'supported' while citing nothing is as bad as a hallucinating generator.",
+          "rubric": [
+            "Names position, verbosity and self-preference bias",
+            "Pointwise rubric preferred; swap orderings for pairwise",
+            "Judge from a different family and pinned version",
+            "Calibration against human-graded sample",
+            "Treats judge output as an instrument, not truth"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "agentic.rag-evals.s1",
+          "situation": "Two weeks before go-live, a partner says the assistant's answers are 'sometimes wrong' but cannot say how often or which kind. The team has no evaluation set, 30 saved chat logs, and a proposal from one engineer to switch to a larger model to 'make it smarter'.",
+          "question": "What do you do with the two weeks?",
+          "options": [
+            {
+              "text": "Spend the first three days building a 120-question golden set with two associates from the 30 logs plus their own questions, run recall@k and faithfulness, and fix whichever stage the numbers blame before touching the model.",
+              "verdict": "best",
+              "why": "Without measurement you cannot tell retrieval failures from generation failures, and most 'wrong answers' are retrieval. The golden set also gives the partner a number to track instead of a feeling, and becomes the regression suite for every later change."
+            },
+            {
+              "text": "Add a self-verification step where the model re-reads the retrieved chunks and revises its answer before responding.",
+              "verdict": "ok",
+              "why": "Self-checks do reduce some hallucinations and are cheap to add, but they double generation cost and do nothing if the right chunk was never retrieved. Worth trying, but only after you can measure whether it helped."
+            },
+            {
+              "text": "Switch to the largest available model for the remaining two weeks and ask the partner whether it feels better.",
+              "verdict": "bad",
+              "why": "A bigger model cannot answer from a chunk it never received, costs several times more per answer, and 'feels better' is not evidence. You would go live blind with a higher bill."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agentic.observability",
+      "title": "Tracing Agents",
+      "tease": "A $4,000 Bedrock bill from one weekend. Which tool call looped? Without traces you will never know.",
+      "lesson": {
+        "body": "An agent run is a tree, and a trace is that tree with timings and payloads. The root span is the user request; children are retrieval (query text, filters, k, latency, returned chunk ids), rerank, each LLM call (model, input and output tokens, finish reason, latency) and each tool call. With that, 'why was this answer wrong' becomes 'the filter excluded the right matter' or 'the model ignored chunk 4', and 'why did the bill triple' becomes 'this tool looped 40 times per session'. It is the same discipline as correlation ids across services in Application Insights, applied to tokens.\n\nThe vendor-neutral vocabulary is the OpenTelemetry GenAI semantic conventions: `gen_ai.operation.name`, `gen_ai.provider.name` (which replaced `gen_ai.system`), `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens`, with span names like `chat anthropic.claude-...`. They are still at Development stability, and in 2026 they moved out of the core semantic-conventions repository into a dedicated `semantic-conventions-genai` repository that had no tagged release as of autumn 2026, so pin instrumentation versions and expect renames. Prompt and completion text is opt-in through `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`, which matters enormously when prompts contain privileged documents: keep it off by default and decide deliberately where that text may be stored and for how long.\n\n**LangSmith** needs `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY` and `LANGSMITH_PROJECT`; decorate functions with `@traceable` or wrap the model client, and it also ingests OTel; EU tenants use `eu.api.smith.langchain.com`. Its datasets and `evaluate()` tie traces to the golden set. **AgentCore Observability** (GA 13 October 2025) renders agent traces in the CloudWatch GenAI Observability page after a one-time enable of CloudWatch Transaction Search; agents on AgentCore Runtime are auto-instrumented, others ship spans via the ADOT SDK to CloudWatch's OTLP endpoint with SigV4, so an ECS-hosted agent lands in the same dashboards. Emit cost per answer as a metric and alert on span count per session.",
+        "snippet": "from opentelemetry import trace\ntracer = trace.get_tracer(\"legal-assistant\")\n\ndef answer(question: str, user: User) -> Answer:\n    with tracer.start_as_current_span(\"rag.answer\") as root:\n        root.set_attribute(\"app.matter_ids\", user.permitted_matters)   # the filter actually used\n        root.set_attribute(\"enduser.id\", user.id)\n\n        with tracer.start_as_current_span(\"retrieve opensearch\") as s:\n            s.set_attribute(\"gen_ai.operation.name\", \"retrieve\")\n            hits = search(question, filter=user.permitted_matters, k=50)\n            s.set_attribute(\"app.chunk_ids\", [h.id for h in hits])       # ids only, never text\n\n        with tracer.start_as_current_span(\"chat anthropic.claude\") as s:\n            s.set_attribute(\"gen_ai.operation.name\", \"chat\")\n            s.set_attribute(\"gen_ai.provider.name\", \"aws.bedrock\")\n            s.set_attribute(\"gen_ai.request.model\", MODEL_ID)\n            resp = bedrock_chat(prompt(question, hits[:8]))\n            s.set_attribute(\"gen_ai.usage.input_tokens\", resp.usage.input_tokens)\n            s.set_attribute(\"gen_ai.usage.output_tokens\", resp.usage.output_tokens)\n            s.set_attribute(\"gen_ai.response.finish_reasons\", [resp.stop_reason])\n        # content capture stays off: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT unset\n        return resp",
+        "snippetLang": "python",
+        "source": {
+          "title": "Semantic conventions for generative client AI spans - OpenTelemetry",
+          "url": "https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-spans/"
+        }
+      },
+      "cards": [
+        {
+          "id": "agentic.observability.c1",
+          "type": "mc",
+          "prompt": "Which OpenTelemetry GenAI attribute records the number of prompt tokens sent to the model?",
+          "options": [
+            "gen_ai.request.tokens",
+            "gen_ai.usage.input_tokens",
+            "llm.prompt_tokens",
+            "gen_ai.prompt.length"
+          ],
+          "answer": 1,
+          "why": "gen_ai.usage.input_tokens and gen_ai.usage.output_tokens are the standard pair, and input tokens should include cached tokens. llm.prompt_tokens is an older vendor convention you will still see in some SDKs."
+        },
+        {
+          "id": "agentic.observability.c2",
+          "type": "tf",
+          "prompt": "As of 2026, the OpenTelemetry GenAI semantic conventions are marked Stable.",
+          "answer": false,
+          "why": "Every gen_ai attribute, span and metric is still at Development stability, and in 2026 they moved to a dedicated semantic-conventions-genai repository that has not yet cut a tagged release. That is why you pin instrumentation versions and expect attribute renames such as gen_ai.system to gen_ai.provider.name."
+        },
+        {
+          "id": "agentic.observability.c3",
+          "type": "cloze",
+          "prompt": "LangSmith tracing is switched on with the environment variable ___=true.",
+          "answer": "LANGSMITH_TRACING",
+          "why": "Together with LANGSMITH_API_KEY and optionally LANGSMITH_PROJECT, that is the whole setup; @traceable or a wrapped client then records a run tree. EU tenants must also set LANGSMITH_ENDPOINT or authentication fails."
+        },
+        {
+          "id": "agentic.observability.c4",
+          "type": "mc",
+          "prompt": "Before AgentCore spans and traces appear in the CloudWatch GenAI Observability page, you must do a one-time enable of:",
+          "options": [
+            "CloudWatch Container Insights",
+            "CloudWatch Transaction Search",
+            "AWS X-Ray sampling rules",
+            "Bedrock model invocation logging"
+          ],
+          "answer": 1,
+          "why": "Transaction Search is the CloudWatch feature that indexes spans for the GenAI Observability views. Model invocation logging is separate and records prompts and completions, which is a privacy decision in its own right."
+        },
+        {
+          "id": "agentic.observability.c5",
+          "type": "mc",
+          "prompt": "Why should prompt and completion content capture be off by default in a law firm's agent telemetry?",
+          "options": [
+            "It makes traces too slow to render",
+            "Prompts contain privileged client documents, so capturing them copies that text into the telemetry backend's retention and jurisdiction",
+            "OpenTelemetry does not support string attributes",
+            "LLM providers forbid logging their outputs"
+          ],
+          "answer": 1,
+          "why": "A trace store is a second copy of client data with its own access controls, retention and possibly region. Record chunk ids, token counts and latencies by default; turn on content capture only for a scoped debugging window with approval."
+        },
+        {
+          "id": "agentic.observability.c6",
+          "type": "cloze",
+          "prompt": "In newer OpenTelemetry GenAI conventions, the attribute gen_ai.system was replaced by ___.",
+          "answer": "gen_ai.provider.name",
+          "why": "The rename is one of several breaking changes while the conventions are in Development. Dashboards keyed on gen_ai.system silently go empty after an SDK upgrade."
+        },
+        {
+          "id": "agentic.observability.c7",
+          "type": "tf",
+          "prompt": "AgentCore Observability can only receive telemetry from agents that run on AgentCore Runtime.",
+          "answer": false,
+          "why": "Agents on Runtime are auto-instrumented, but any agent instrumented with the ADOT SDK can send OTLP spans to CloudWatch's endpoint with SigV4, including ECS, on-premises or another cloud. Frameworks like Strands and LangChain already emit GenAI-convention spans."
+        }
+      ],
+      "explain": [
+        {
+          "id": "agentic.observability.e1",
+          "prompt": "A client's Bedrock bill tripled last month and nobody changed the code. How do you find out why, and how do you stop it recurring?",
+          "seconds": 120,
+          "modelAnswer": "First I go to the traces, because a bill is just the sum of gen_ai.usage.input_tokens and output_tokens across spans. I group spans by day and by operation to see whether the spike is more sessions, longer prompts, or more calls per session. Typical culprits: a tool-call loop where the agent retries the same failing tool dozens of times; a retrieval change that returns 50 chunks instead of 8 so every prompt is five times longer; a conversation history that is never trimmed; or a batch job someone pointed at production. The trace tree shows which: span count per session, prompt size per LLM span, and finish reasons. If I have no traces, that is finding number one. To prevent recurrence I emit cost per answer as a CloudWatch metric computed from token counts and model price, alert on spans per session and on daily spend per client, cap tool iterations in the agent loop, and put a hard budget in the agent framework. Then I add a cost assertion to the golden-set run so a prompt change that doubles tokens fails CI before it reaches the client.",
+          "rubric": [
+            "Uses token attributes on spans to decompose the bill",
+            "Names concrete causes: loops, bigger prompts, untrimmed history",
+            "Diagnoses from span count and prompt size per session",
+            "Preventive metrics and alerts on cost and span count",
+            "Hard caps on iterations and a CI cost check"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "agentic.observability.s1",
+          "situation": "A Frankfurt-based law firm is deploying your agent on ECS in eu-central-1. The engineers want LangSmith for its debugging UI and have the default US endpoint and full prompt capture enabled in staging. The firm's DPO asks where client documents will be stored and under which jurisdiction.",
+          "question": "What do you set up for production?",
+          "options": [
+            {
+              "text": "Instrument with OpenTelemetry GenAI conventions, keep message-content capture off, record chunk ids and token counts, and ship spans to CloudWatch in eu-central-1 (or LangSmith's EU endpoint) after the DPO signs off on retention.",
+              "verdict": "best",
+              "why": "The trace store is a second copy of client data; keeping content off and the backend in-region answers the DPO's question truthfully. OTel keeps you vendor-neutral so the debugging UI choice is reversible."
+            },
+            {
+              "text": "Skip tracing in production and rely on structured application logs with request ids, adding traces only when a problem is reported.",
+              "verdict": "ok",
+              "why": "Logs with correlation ids do answer some questions and avoid the data-residency issue, but you lose token accounting per span and the tree view that finds loops. You will be reconstructing traces by hand during the first incident."
+            },
+            {
+              "text": "Keep the staging configuration: LangSmith US endpoint with full prompt and completion capture, because it makes debugging fastest.",
+              "verdict": "bad",
+              "why": "Privileged German client documents would be copied into a US-hosted store with its own retention. That is a GDPR and professional-secrecy problem the firm cannot accept, however good the UI."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "agentic.guardrails",
+      "title": "Guardrails and Approval Gates",
+      "tease": "The model 'approved' a settlement letter and sent it. Nobody asked a human. Where was the gate?",
+      "lesson": {
+        "body": "Guardrails are layers, and none of them is the retrieval filter. **Input validation**: schema and length checks, allow-listed tools, prompt-injection detection on anything that came from a document rather than the user. **Output validation**: request structured output against a JSON schema and validate it server-side, the way ASP.NET model binding plus FluentValidation treats a request body; never let free text drive a side effect. **Human approval gates**: any irreversible or expensive action (send to a client, file with a court, delete, spend above a threshold) pauses the workflow, persists state, and resumes only on an explicit approval, like a manual approval on an Azure DevOps environment. An agent that 'asks itself' for permission has no gate.\n\n**Amazon Bedrock Guardrails** adds managed policies you attach to Converse/Invoke or call directly through `ApplyGuardrail`, which works with any model including self-hosted ones. Policies: content filters (Hate, Insults, Sexual, Violence, Misconduct, Prompt Attack, each with a strength), denied topics, word filters, sensitive information filters (PII entities or regex; block or mask), **contextual grounding checks**, and **Automated Reasoning checks** (GA 6 August 2025), which compile a written policy into formal logic and prove or refute statements instead of estimating a confidence. Grounding checks score grounding (is every claim supported by the source) and relevance (does it answer the query) against thresholds from 0 to 0.99; they run on the output only, and cap at 100,000 characters of source, 1,000 of query and 5,000 of response. With `ApplyGuardrail` you tag content blocks with `qualifiers`: `grounding_source` for the retrieved passages, `query`, and an unqualified or `guard_content` block for the answer. Billing is per policy per 1,000 text units of up to 1,000 characters each: content filters and denied topics $0.15, PII filters and grounding checks $0.10, Automated Reasoning $0.17 per policy; regex and word filters are free.\n\nWhat guardrails do not do: decide who may see a document. A denied topic is not an ethical wall; that remains the retrieval-time permission filter.",
+        "snippet": "resp = bedrock_runtime.apply_guardrail(\n    guardrailIdentifier=GUARDRAIL_ID, guardrailVersion=\"3\",\n    source=\"OUTPUT\",                      # grounding checks only run on output\n    content=[\n        {\"text\": {\"text\": \"\\n\\n\".join(c.text for c in retrieved_chunks),\n                  \"qualifiers\": [\"grounding_source\"]}},     # <= 100,000 chars\n        {\"text\": {\"text\": question, \"qualifiers\": [\"query\"]}},  # <= 1,000 chars\n        {\"text\": {\"text\": draft_answer}},                      # content to guard, <= 5,000\n    ],\n)\nif resp[\"action\"] == \"GUARDRAIL_INTERVENED\":\n    # inspect resp[\"assessments\"][0][\"contextualGroundingPolicy\"][\"filters\"]\n    # each filter has type GROUNDING | RELEVANCE, score, threshold, action\n    return abstain(\"I could not ground an answer in the retrieved documents.\")\n\n# irreversible step: stop and wait for a human, do not let the model decide\nif action.kind in {\"send_to_client\", \"file_with_court\"}:\n    checkpoint.save(state)\n    approvals.request(action, approver=supervising_partner)\n    raise PausedForApproval(action.id)",
+        "snippetLang": "python",
+        "source": {
+          "title": "Use contextual grounding check to filter hallucinations in responses - Amazon Bedrock",
+          "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "agentic.guardrails.c1",
+          "type": "mc",
+          "prompt": "What range of threshold values does a Bedrock contextual grounding check accept for grounding and relevance?",
+          "options": ["0 to 1 inclusive", "0 to 0.99", "1 to 100", "0.5 to 1"],
+          "answer": 1,
+          "why": "A threshold of 1 is rejected because it would block every response; 0.99 is the maximum. Responses whose grounding or relevance score falls below the threshold are treated as hallucinations and blocked or flagged."
+        },
+        {
+          "id": "agentic.guardrails.c2",
+          "type": "tf",
+          "prompt": "Bedrock's contextual grounding check evaluates the input prompt as well as the model's output.",
+          "answer": false,
+          "why": "Grounding needs a response to compare against the source, so it only runs on output. Content filters, denied topics, word filters and PII filters are the policies that run on both input and output."
+        },
+        {
+          "id": "agentic.guardrails.c3",
+          "type": "cloze",
+          "prompt": "Bedrock's ___ API lets you run a guardrail against any model's text, including self-hosted or third-party models that never touch Bedrock inference.",
+          "answer": "ApplyGuardrail",
+          "why": "ApplyGuardrail decouples the policy from the model, so one guardrail can govern a Bedrock model, an on-prem model and a vendor API consistently. It also means you can run grounding checks on a draft before any side effect."
+        },
+        {
+          "id": "agentic.guardrails.c4",
+          "type": "mc",
+          "prompt": "In an ApplyGuardrail call for a RAG answer, which qualifier marks the retrieved passages?",
+          "options": ["guard_content", "query", "grounding_source", "context"],
+          "answer": 2,
+          "why": "grounding_source is the reference the answer is checked against, query is the user's question, and the unqualified or guard_content block is the text being guarded. Content tagged grounding_source or query is excluded from the other policies unless you also add guard_content."
+        },
+        {
+          "id": "agentic.guardrails.c5",
+          "type": "mc",
+          "prompt": "What is the correct implementation of a human approval gate before an agent sends a letter to a client?",
+          "options": [
+            "Add 'always ask the user before sending' to the system prompt",
+            "Have the model call an approve_self tool that returns true when it is confident",
+            "Persist the workflow state, stop execution, notify an approver, and resume only when an authenticated human approves",
+            "Send the letter and allow recall within 60 seconds"
+          ],
+          "answer": 2,
+          "why": "A gate must be enforced by the orchestrator, not requested of the model. Checkpointing and resuming on approval is the same pattern as a manual approval stage on an Azure DevOps environment; a prompt instruction is optional by construction."
+        },
+        {
+          "id": "agentic.guardrails.c6",
+          "type": "tf",
+          "prompt": "A denied-topics policy in Bedrock Guardrails is an acceptable substitute for retrieval-time permission filters between matters.",
+          "answer": false,
+          "why": "Topic filters classify what the text is about, not who may see it; two matters can share every topic. Access control has to happen before retrieval returns a chunk, and guardrails run after the text already exists."
+        },
+        {
+          "id": "agentic.guardrails.c7",
+          "type": "mc",
+          "prompt": "How do Automated Reasoning checks differ from contextual grounding checks?",
+          "options": [
+            "They are the same feature under a new name",
+            "Automated Reasoning compiles a written policy into formal logic and proves or refutes statements; grounding uses an ML model to score confidence against a source",
+            "Automated Reasoning runs on input; grounding runs on output",
+            "Automated Reasoning only works with Amazon's own models"
+          ],
+          "answer": 1,
+          "why": "Automated Reasoning (GA August 2025) encodes rules such as eligibility or approval policies as logic and returns findings like valid or invalid with explanations; grounding is a probabilistic check on whether claims are supported by retrieved text. They catch different errors and can be combined."
+        },
+        {
+          "id": "agentic.guardrails.c8",
+          "type": "cloze",
+          "prompt": "The grounding source for a Bedrock contextual grounding check is limited to ___ characters.",
+          "answer": "100,000",
+          "why": "Source is capped at 100,000 characters, the query at 1,000 and the response at 5,000. For a 50-chunk prompt you will hit the source cap, which is another reason to rerank down to a handful of chunks before generation."
+        }
+      ],
+      "explain": [
+        {
+          "id": "agentic.guardrails.e1",
+          "prompt": "Describe the guardrail layers you would put around an agent that drafts and sends client-facing letters.",
+          "seconds": 120,
+          "modelAnswer": "I think in layers from the outside in. Input: the request is validated against a schema, the agent only has the tools this workflow needs, and anything retrieved from documents is treated as untrusted text and scanned for prompt injection before it reaches the model. Retrieval: the permission filter decides which documents it may draw from; no guardrail replaces that. Generation: the draft is produced as structured output against a JSON schema, recipient, matter id, body, cited chunk ids, and validated server-side like any API request body. Then a Bedrock contextual grounding check runs on the body with the retrieved chunks as grounding_source, PII filters mask anything that should not leave the firm, and I verify every cited id exists. The critical layer is the approval gate: 'send' is an irreversible action, so the orchestrator checkpoints the state, stops, and notifies the supervising lawyer; it resumes only on their authenticated approval, never on the model's say-so. Every step is traced with token counts and chunk ids for audit. The model drafts; humans and deterministic code decide.",
+          "rubric": [
+            "Input validation and injection scanning of retrieved text",
+            "Structured output validated server-side",
+            "Grounding check and PII masking before the side effect",
+            "Orchestrator-enforced human approval with persisted state",
+            "Permission filter at retrieval is separate from guardrails",
+            "Audit trace of the whole run"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "agentic.guardrails.s1",
+          "situation": "An agent drafts privilege-log entries for a Fortune 100 client's document production: for each withheld document it writes the date, author, recipients, privilege basis and a description, then a tool uploads the log to the production platform. The deadline is Friday. A reviewer notices one entry described a document as 'draft board minutes' when it was an email, and the privilege basis was invented.",
+          "question": "What do you change before resuming?",
+          "options": [
+            {
+              "text": "Produce each entry as structured output validated against a schema, run a contextual grounding check of description and basis against the document's own text, route any entry below threshold to a reviewer, and gate the upload tool behind an explicit human approval of the batch.",
+              "verdict": "best",
+              "why": "An invented privilege basis can waive privilege or draw sanctions, so the side effect must sit behind deterministic checks and a human. Grounding and schema validation catch the fabrication; the approval gate makes the upload an attorney's act, not the model's."
+            },
+            {
+              "text": "Have a second model call review each entry and correct it before upload, keeping the upload automatic to hit Friday.",
+              "verdict": "ok",
+              "why": "A reviewer model reduces errors and is cheap, but it is another probabilistic step with no accountability, and the upload remains unsupervised. It is a reasonable addition inside the gate, not a replacement for it."
+            },
+            {
+              "text": "Lower the model temperature, add 'never invent a privilege basis' to the prompt, and resume automated uploads.",
+              "verdict": "bad",
+              "why": "Prompt instructions are suggestions, not controls, and temperature does not prevent fabrication. You would be producing a court-facing document with the same failure mode and no way to catch it."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "boss": {
+    "questions": [
+      {
+        "id": "agentic.boss.1",
+        "prompt": "Design a system that lets lawyers ask questions over 2 million documents across hundreds of matters. Walk me through ingestion, indexing, retrieval, security, answer generation and how you would know it works.",
+        "seconds": 2700,
+        "modelOutline": "Start with constraints: per-matter confidentiality, ethical walls, citations that must be verifiable, EU data residency, and a budget. Ingestion: S3 landing, event-driven workers (Step Functions or Kafka consumers) that parse and OCR, dedupe by hash, extract metadata (matter, custodian, date, privilege) into sidecars, idempotent on doc id. Chunking: structure-aware, Article/Section boundaries with heading breadcrumbs and parent/child, email threads by message. Index: OpenSearch or Elasticsearch, hybrid BM25 plus kNN with quantized vectors, partitioned per matter or client, RRF fusion. Security: entitlements resolved server-side and applied as a pre-filter in every query, deny by default. Reranker over the top 50, keep eight. Generation with chunk ids, citations verified against retrieved ids, abstain when nothing grounds. Audit log of user, filter, chunk ids, tokens, model. Guardrails: grounding check, PII masking, approval gates for any action. Evaluation: golden set per matter type, recall@k and faithfulness in CI, cost per answer tracked in traces. Close with the rollout: pilot one matter, measure, expand.",
+        "rubric": [
+          "Ingestion pipeline: parse/OCR, dedupe, metadata extraction, idempotent and event-driven",
+          "Structure-aware chunking with breadcrumbs and parent/child for legal documents",
+          "Per-matter (or per-client) hybrid index: BM25 plus kNN fused with RRF, quantized vectors",
+          "Permission filters derived server-side and applied as pre-filters, deny by default",
+          "Cross-encoder reranker over a shortlist before generation",
+          "Citations tied to chunk ids and verified; abstains when ungrounded",
+          "Audit log of user, filter, chunk ids, model and tokens per request",
+          "Golden evaluation set with retrieval and faithfulness metrics run in CI"
+        ]
+      },
+      {
+        "id": "agentic.boss.2",
+        "prompt": "How do you know the agent's answers are good?",
+        "seconds": 240,
+        "modelOutline": "Define 'good' as three measurable things: the right evidence was retrieved, the answer is faithful to that evidence and actually answers the question, and the system abstains when it should. Build a golden set with domain experts: 100-200 questions with labelled relevant chunks and reference answers, stratified by type including unanswerable. Measure retrieval with recall@k and nDCG, deterministic and free; measure generation with RAGAS-style faithfulness (supported claims over total), response relevancy, context recall. Use an LLM judge from a different family with pointwise rubrics, swapped orderings for comparisons, and calibrate it against lawyer grades before trusting it. Run the set in CI on every prompt, model or index change and gate deploys on regressions. In production, sample traces for judged faithfulness, track thumbs-down and corrected answers, feed them back into the set, and watch cost and latency per answer alongside quality.",
+        "rubric": [
+          "Separates retrieval quality from generation quality",
+          "Golden set built with domain experts, stratified, includes unanswerable questions",
+          "Retrieval metrics (recall@k, nDCG) that need no LLM",
+          "Generation metrics: faithfulness, response relevancy, context recall",
+          "LLM-as-judge biases named and mitigated, calibrated against humans",
+          "Evaluation runs in CI and gates deploys",
+          "Production monitoring: sampled judging, user feedback loop, cost per answer"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "format": "Situation (under 20 seconds) → what you decided and what you rejected → result with a number → one line on why it matters for this role. About 2 minutes out loud.",
+  "rubric": [
+    "Situation set in under 20 seconds, with scale (users, data, team)",
+    "Named the decision you made and at least one alternative you rejected",
+    "Result stated with a concrete number (time, money, users, incidents, latency)",
+    "Tied back to this role: agents, AWS, security or client work",
+    "Finished inside 2 minutes without rambling"
+  ],
+  "stories": [
+    {
+      "id": "story.moveo",
+      "title": "Owning the Moveo ERP end to end",
+      "brief": "Taking over after a management change; HR, payroll and tender modules; now the company's main management system with about 50 daily users.",
+      "answers": "\"architect → build → deploy → refine\" and \"real value, not prototypes\"",
+      "prompts": [
+        "What state was the system in when you took it over, and what did you decide to fix first?",
+        "Which architectural decision would you defend today, and which would you reverse?",
+        "What number proves it delivered value: users, hours saved, errors removed?"
+      ]
+    },
+    {
+      "id": "story.mcp",
+      "title": "Your agentic AI and MCP work",
+      "brief": "The most relevant story and currently the vaguest. For each server or workflow: what it does, which model, who uses it, what it saved.",
+      "answers": "\"Tell me about your MCP work\" and every agentic-AI depth question",
+      "prompts": [
+        "Name each MCP server or workflow and the one problem it solves.",
+        "Which model and why? What broke the first time, and what did you change?",
+        "Who uses it today and what does it save them per week?"
+      ]
+    },
+    {
+      "id": "story.security",
+      "title": "Security in a sensitive-data system",
+      "brief": "Roles, permissions and audit logging in the payroll module. Transfers directly to the agent access-control and audit-trail questions.",
+      "answers": "\"How do you stop an agent leaking documents?\" and governance questions",
+      "prompts": [
+        "How were roles and permissions modelled, and where were they enforced?",
+        "What did the audit log record, and did anyone ever actually use it?",
+        "How would you apply the same design to an agent that retrieves documents?"
+      ]
+    },
+    {
+      "id": "story.hard-problem",
+      "title": "A hard technical problem",
+      "brief": "A performance tuning win, or a Kafka or Elasticsearch issue, with before and after numbers.",
+      "answers": "\"Tell me about a hard technical problem\"",
+      "prompts": [
+        "What was the symptom and how did you narrow it down?",
+        "What did you try that did not work?",
+        "Before and after numbers: latency, throughput, cost, error rate."
+      ]
+    },
+    {
+      "id": "story.clients",
+      "title": "Government and private clients at InterAdria",
+      "brief": "Shows you have handled client requirements, close to the professional-services setting they prefer.",
+      "answers": "\"Have you worked with clients?\" and consulting-fit questions",
+      "prompts": [
+        "A requirement that changed late, and how you handled the client conversation.",
+        "How you translated a vague request into a scoped deliverable.",
+        "What a government client cared about that a private one did not."
+      ]
+    },
+    {
+      "id": "story.mentoring",
+      "title": "Mentoring and code review",
+      "brief": "What you changed in how juniors work.",
+      "answers": "\"Senior\" title questions and team-fit questions",
+      "prompts": [
+        "One concrete habit you changed in a junior's work and how you did it.",
+        "What your code reviews look for first.",
+        "Evidence it worked: fewer review rounds, fewer production bugs, faster onboarding."
+      ]
+    },
+    {
+      "id": "story.mistake",
+      "title": "A mistake",
+      "brief": "Something that broke in production and what you changed afterward.",
+      "answers": "\"Tell me about a failure\"",
+      "prompts": [
+        "What broke, who noticed, and how long until it was fixed?",
+        "Your part in it, stated plainly.",
+        "The process or technical change that stops it recurring."
+      ]
+    }
+  ],
+  "extra": {
+    "title": "The age and Senior title question",
+    "note": "Answer with scope of ownership, not years: systems owned end to end, users served, decisions made alone, people mentored."
+  }
+}

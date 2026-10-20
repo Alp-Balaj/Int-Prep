@@ -1,0 +1,1398 @@
+{
+  "tier": {
+    "id": "aws",
+    "name": "AWS and Terraform",
+    "level": 1,
+    "tease": "Nine managed services, one law-firm pipeline. Which default setting leaks a privileged file?"
+  },
+  "nodes": [
+    {
+      "id": "aws.apigw",
+      "title": "API Gateway",
+      "tease": "Your Lambda authorizer kept approving an offboarded paralegal for five minutes. Bug or design?",
+      "lesson": {
+        "body": "API Gateway is the managed front door: TLS termination, authentication, throttling and routing in front of Lambda or a container service. There are two products. **REST APIs** (the `apigateway` v1 API) carry the full feature set: API keys and **usage plans** (per-client rate limits and quotas), request validation, VTL mapping templates, response caching, AWS WAF, edge-optimized and private endpoints, canary deployments and X-Ray. **HTTP APIs** (`apigatewayv2`) are the minimal-API flavour: roughly 70% cheaper, lower latency, native **JWT authorizers** (a Cognito user pool is just an OIDC issuer), Lambda and IAM authorizers, automatic deployments. Think ASP.NET Core full middleware pipeline versus .NET minimal APIs.\n\nA **Lambda authorizer** (`TOKEN` or `REQUEST` type) receives the identity source, returns `principalId`, an IAM policy document and an optional `context` object passed to the backend. Its result is cached per identity source for `authorizerResultTtlInSeconds`: default **300**, maximum **3600**, 0 disables caching. That cache is why a revoked user keeps working for a few minutes. A JWT authorizer validates issuer, audience and expiry in-process with no Lambda invocation at all.\n\nThrottling is a token bucket: **10,000 requests per second with a 5,000-request burst per account per Region**, and a 429 beyond. Per-client limits exist only through REST usage plans. The integration timeout is 29 seconds on REST APIs (raisable through Service Quotas for Regional and private APIs since June 2024, sometimes in exchange for a lower throttle quota) and a hard **30 seconds** on HTTP APIs, with a 10 MB payload cap. A 60-second agent call therefore needs an async pattern: return 202 with a job id, stream over WebSocket, or go around the gateway with an ALB.\n\nA containerized service sits behind a **VPC link** to an internal ALB or NLB; VPC links V2 now support ALB for both HTTP and REST APIs.",
+        "snippet": "resource \"aws_apigatewayv2_api\" \"api\" {\n  name          = \"agent-api\"\n  protocol_type = \"HTTP\"\n}\n\nresource \"aws_apigatewayv2_authorizer\" \"jwt\" {\n  api_id           = aws_apigatewayv2_api.api.id\n  authorizer_type  = \"JWT\"\n  identity_sources = [\"$request.header.Authorization\"]\n  name             = \"cognito\"\n  jwt_configuration {\n    audience = [aws_cognito_user_pool_client.spa.id]\n    issuer   = \"https://${aws_cognito_user_pool.main.endpoint}\"\n  }\n}\n\nresource \"aws_apigatewayv2_integration\" \"ecs\" {\n  api_id             = aws_apigatewayv2_api.api.id\n  integration_type   = \"HTTP_PROXY\"\n  integration_method = \"ANY\"\n  connection_type    = \"VPC_LINK\"\n  connection_id      = aws_apigatewayv2_vpc_link.main.id\n  integration_uri    = aws_lb_listener.internal.arn\n}",
+        "snippetLang": "hcl",
+        "source": {
+          "title": "Choose between REST APIs and HTTP APIs - Amazon API Gateway",
+          "url": "https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-vs-rest.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "aws.apigw.c1",
+          "type": "mc",
+          "prompt": "A Fortune 100 client wants each of their business units to get its own request quota and API key. Which API Gateway product do you need?",
+          "options": [
+            "REST API, because usage plans and API keys only exist there",
+            "HTTP API, because JWT authorizers carry the quota in the token",
+            "Either, because throttling is configured per stage on both",
+            "WebSocket API, because quotas are connection-based"
+          ],
+          "answer": 0,
+          "why": "Per-client throttling and quotas are REST-only features (usage plans plus API keys). HTTP APIs only have stage-level and route-level throttling, so the tempting 'either' answer is wrong: on an HTTP API every client shares one bucket."
+        },
+        {
+          "id": "aws.apigw.c2",
+          "type": "mc",
+          "prompt": "You enable a Lambda authorizer and leave caching at its default. How long can a revoked token keep working?",
+          "options": [
+            "It cannot; the authorizer runs on every request",
+            "Up to 60 seconds",
+            "Up to 300 seconds",
+            "Up to 3600 seconds"
+          ],
+          "answer": 2,
+          "why": "authorizerResultTtlInSeconds defaults to 300 and maxes out at 3600; 0 disables caching. People remember the 3600 maximum and quote it as the default, which overstates the exposure window by an order of magnitude."
+        },
+        {
+          "id": "aws.apigw.c3",
+          "type": "mc",
+          "prompt": "Default account-level throttle for API Gateway in a mainstream Region is:",
+          "options": [
+            "1,000 requests per second with a 500 burst",
+            "10,000 requests per second with a 5,000-request burst bucket",
+            "100,000 requests per second, no burst limit",
+            "Unlimited; only Lambda concurrency throttles you"
+          ],
+          "answer": 1,
+          "why": "It is a token bucket of 10,000 RPS with a maximum bucket capacity of 5,000 requests, shared across all APIs in the account and Region. Lambda concurrency is a separate limit downstream; hitting either gives clients a 429."
+        },
+        {
+          "id": "aws.apigw.c4",
+          "type": "mc",
+          "prompt": "Your agent endpoint takes 45 to 90 seconds to summarize a deposition. It sits behind an HTTP API. What is the right fix?",
+          "options": [
+            "Raise the HTTP API integration timeout to 120 seconds",
+            "Return 202 with a job id, run the work in ECS, and let the client poll or subscribe over WebSocket",
+            "Increase the Lambda function timeout to 15 minutes",
+            "Enable API Gateway response caching so repeat requests are instant"
+          ],
+          "answer": 1,
+          "why": "HTTP APIs have a hard 30-second integration timeout that cannot be raised; only Regional and private REST APIs can request more via Service Quotas. Raising the Lambda timeout changes nothing because the gateway drops the connection first."
+        },
+        {
+          "id": "aws.apigw.c5",
+          "type": "tf",
+          "prompt": "HTTP APIs support AWS WAF integration.",
+          "answer": false,
+          "why": "WAF attaches to REST API stages, not HTTP APIs. If you need WAF with an HTTP API, put CloudFront in front and attach WAF there, which is exactly what the SPA architecture does anyway."
+        },
+        {
+          "id": "aws.apigw.c6",
+          "type": "tf",
+          "prompt": "REST APIs can now use VPC links V2 to integrate privately with an Application Load Balancer.",
+          "answer": true,
+          "why": "VPC links V2 are supported for both HTTP and REST APIs and connect to ALB, NLB or Cloud Map. The older rule 'REST APIs need an NLB for private integrations' described VPC links V1 and is out of date."
+        },
+        {
+          "id": "aws.apigw.c7",
+          "type": "cloze",
+          "prompt": "A Lambda authorizer must return a principalId and an ___ document; API Gateway evaluates that document to allow or deny the method.",
+          "answer": "IAM policy",
+          "why": "The authorizer output is an IAM policy with execute-api:Invoke statements plus principalId and optional context. Returning only a boolean fails the call, which is why HTTP APIs offer the separate 'simple response' format with isAuthorized."
+        },
+        {
+          "id": "aws.apigw.c8",
+          "type": "cloze",
+          "prompt": "The hard maximum integration timeout for an HTTP API is ___ seconds.",
+          "answer": "30",
+          "why": "HTTP APIs cap at 30,000 ms and cannot be raised. REST APIs default to 29 seconds but, since June 2024, Regional and private REST APIs can request a higher quota."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.apigw.e1",
+          "prompt": "Walk me through how you would authenticate and authorize requests to our agent API using Cognito and API Gateway. When would you reach for a Lambda authorizer instead?",
+          "seconds": 120,
+          "modelAnswer": "I would start with an HTTP API and a JWT authorizer. Cognito is the issuer: the React app signs in through the hosted UI or Amplify, gets an ID and access token, and sends the access token in the Authorization header. The JWT authorizer validates signature, issuer, audience and expiry inside API Gateway with no Lambda call, so it is cheap and adds almost no latency. Scopes and group claims get passed to the ECS service, which does the fine-grained check: does this user have access to this matter. That is the same split I use in .NET: JwtBearer middleware validates the token, policies and handlers decide the business rule. I reach for a Lambda authorizer when identity is not a clean JWT: a legacy API key per law firm, a SAML assertion, or a lookup against an entitlement database. The trade-off is latency and a cache: results are cached up to 300 seconds by default, so revocation is not instant. For a legal client I would keep tokens short-lived, around 15 minutes, rather than disable the cache.",
+          "rubric": [
+            "Names HTTP API plus JWT authorizer with Cognito as issuer and audience check",
+            "Distinguishes coarse auth at the gateway from matter-level authorization in the service",
+            "Explains when a Lambda authorizer is warranted (non-JWT identity, database lookups)",
+            "Mentions the authorizer result cache (300 s default) and its revocation consequence",
+            "Gives a concrete mitigation such as short token lifetime"
+          ]
+        },
+        {
+          "id": "aws.apigw.e2",
+          "prompt": "A client's security team asks what happens when traffic spikes. Explain API Gateway throttling and how you would stop one noisy law-firm tenant from exhausting a Fortune 100 client's capacity.",
+          "seconds": 120,
+          "modelAnswer": "API Gateway throttles with a token bucket at the account and Region level: 10,000 requests per second steady state with a 5,000-request burst. When the bucket is empty, callers get 429 Too Many Requests, and nothing reaches the backend. Below that you can set stage and route level limits. The catch is that on an HTTP API every client shares those limits, so one tenant hammering the summarization endpoint can starve everybody. If I need per-tenant fairness I have two options. One is a REST API with usage plans: each tenant gets an API key, a rate, a burst and a daily quota, and the gateway enforces it. The other is to keep the HTTP API and do fairness myself: a per-tenant token bucket in the service, or a queue so expensive agent jobs are processed asynchronously and tenants are rate limited at enqueue time. For agentic work the queue is usually better anyway because the real bottleneck is Bedrock token throughput, not HTTP requests. I would also alarm on the 4XX and 5XX CloudWatch metrics and raise the account quota ahead of a go-live.",
+          "rubric": [
+            "States the default account limit and burst and that excess returns 429",
+            "Explains that HTTP API throttling is not per-client",
+            "Offers REST usage plans as the managed per-tenant mechanism",
+            "Offers an application-level alternative (queue or own rate limiter) and says why",
+            "Mentions monitoring or quota increase before launch"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.apigw.s1",
+          "situation": "A law firm client offboarded a paralegal at 09:00. At 09:03 she still gets answers from the matter chatbot. The firm's managing partner calls it a data breach. Your API uses a Lambda authorizer with default caching in front of ECS.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Explain the 300-second authorizer cache, shorten token lifetime and TTL for sensitive routes, and add a server-side entitlement check in the service so revocation is enforced at the data layer too.",
+              "verdict": "best",
+              "why": "The cache is by design, but a legal client needs defense in depth: a short TTL limits exposure, and the service re-checking entitlement against the matter means a stale authorizer decision cannot return documents."
+            },
+            {
+              "text": "Set authorizerResultTtlInSeconds to 0 so the authorizer runs on every request.",
+              "verdict": "ok",
+              "why": "It closes the window but adds a Lambda invocation and latency to every call and does nothing if the service itself trusts the gateway blindly; acceptable as a quick patch, not as the design."
+            },
+            {
+              "text": "Redeploy the API stage every time someone is offboarded to flush the cache.",
+              "verdict": "bad",
+              "why": "Redeploying an API for user management is operationally absurd, does not scale to many firms, and still leaves the service without its own authorization check."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.cloudfront",
+      "title": "CloudFront for the React SPA",
+      "tease": "Why does S3 answer 403, not 404, for a missing page, and how does that break React Router?",
+      "lesson": {
+        "body": "The React build lives in a private S3 bucket (Block Public Access stays on) and CloudFront is the only reader. The modern mechanism is **origin access control (OAC)**: CloudFront signs its origin requests with SigV4 and the bucket policy allows the service principal `cloudfront.amazonaws.com` only when `AWS:SourceArn` equals your distribution ARN. OAC replaced the legacy origin access identity because it supports SSE-KMS (add the same principal and condition to the key policy), every Region, and PUT/DELETE. Two requirements: the origin must be the bucket's REST endpoint, not the static-website endpoint, and Object Ownership must be bucket owner enforced.\n\n**SPA routing.** A deep link such as `/matters/4821` has no object in S3. Because CloudFront's OAC role has `s3:GetObject` but not `s3:ListBucket`, S3 hides existence and returns **403**, not 404. Fix it with a custom error response mapping 403 (and 404) to `/index.html` with response code 200, or better, a **CloudFront Function** on viewer-request that rewrites extensionless paths to `/index.html`, so real 403s stay visible. Error responses are cached for the error caching minimum TTL, 10 seconds by default.\n\n**Behaviors and caching.** Cache behaviors match path patterns in order: `/api/*` goes to the API Gateway origin with the managed `CachingDisabled` cache policy and `AllViewerExceptHostHeader` origin request policy (API Gateway rejects a forwarded Host header); the default behavior goes to S3 with `CachingOptimized`. Hash your asset filenames and set long `Cache-Control` so a deploy only needs to **invalidate `/index.html`**. The first 1,000 invalidation paths per month are free, then $0.005 per path; `/*` counts as one path.\n\n**Edge compute.** CloudFront Functions: JavaScript, sub-millisecond, 10 KB, viewer events only, no network. Lambda@Edge: Node or Python, up to 30 seconds, origin events, network and SDK access. Since late 2025 there are also flat-rate plans (Free, Pro $15, Business $200, Premium $1,000 per month) bundling WAF and DNS.",
+        "snippet": "// CloudFront Function, viewer-request: SPA fallback\nfunction handler(event) {\n  var request = event.request;\n  var uri = request.uri;\n  // Leave API calls and real files (have an extension) alone\n  if (uri.startsWith('/api/') || uri.includes('.')) {\n    return request;\n  }\n  // Everything else is a client-side route\n  request.uri = '/index.html';\n  return request;\n}",
+        "snippetLang": "tsx",
+        "source": {
+          "title": "Restrict access to an Amazon S3 origin - Amazon CloudFront",
+          "url": "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "aws.cloudfront.c1",
+          "type": "mc",
+          "prompt": "A user opens /matters/4821 directly and CloudFront returns an S3 AccessDenied XML with status 403. Why 403 rather than 404?",
+          "options": [
+            "The bucket policy denies s3:GetObject for that prefix",
+            "CloudFront's OAC has GetObject but not ListBucket, so S3 hides whether the key exists",
+            "The object is encrypted with a KMS key CloudFront cannot use",
+            "Block Public Access converts all 404s to 403s"
+          ],
+          "answer": 1,
+          "why": "Without s3:ListBucket, S3 refuses to reveal existence and answers 403 for missing keys. That is why SPA error mapping must cover 403, not just 404; a KMS problem would produce 403 on every object, not only missing ones."
+        },
+        {
+          "id": "aws.cloudfront.c2",
+          "type": "mc",
+          "prompt": "Which configuration lets CloudFront serve a private S3 bucket whose objects are SSE-KMS encrypted?",
+          "options": [
+            "An origin access identity with a bucket policy granting GetObject",
+            "Origin access control plus the CloudFront service principal in the KMS key policy",
+            "A public-read ACL restricted by a Referer header condition",
+            "The S3 static website endpoint with a custom origin header"
+          ],
+          "answer": 1,
+          "why": "OAC signs requests with SigV4 and works with SSE-KMS as long as the key policy allows cloudfront.amazonaws.com conditioned on the distribution ARN. OAI never supported SSE-KMS, and the website endpoint cannot use either mechanism."
+        },
+        {
+          "id": "aws.cloudfront.c3",
+          "type": "mc",
+          "prompt": "Requests through the /api/* behavior to an API Gateway origin fail with 403 from the gateway. The most likely cause is:",
+          "options": [
+            "The cache policy is CachingDisabled",
+            "CloudFront forwards the viewer Host header, which API Gateway rejects; use AllViewerExceptHostHeader",
+            "API Gateway requires an edge-optimized endpoint behind CloudFront",
+            "The behavior lacks a CloudFront Function"
+          ],
+          "answer": 1,
+          "why": "API Gateway routes on its own hostname; a forwarded Host header does not match any API and yields a 403. The managed AllViewerExceptHostHeader origin request policy exists precisely for this case; CachingDisabled is correct for APIs and harmless."
+        },
+        {
+          "id": "aws.cloudfront.c4",
+          "type": "mc",
+          "prompt": "You deploy a new React build whose JS and CSS filenames contain content hashes. What should the pipeline invalidate?",
+          "options": [
+            "/* to be safe",
+            "Only /index.html and any other unhashed files",
+            "Nothing; the cache expires on its own",
+            "Only /assets/*"
+          ],
+          "answer": 1,
+          "why": "Hashed files are new keys, so they are never stale; the only stale object is index.html, which points at them. Invalidating /* works but wastes the 1,000 free paths and evicts cached assets users still need."
+        },
+        {
+          "id": "aws.cloudfront.c5",
+          "type": "tf",
+          "prompt": "CloudFront Functions have network access, so they can call Cognito to validate a token.",
+          "answer": false,
+          "why": "CloudFront Functions run in under a millisecond with no network or filesystem access and a 10 KB code limit; they can verify a hashed token locally but cannot call anything. Lambda@Edge is the option with network access."
+        },
+        {
+          "id": "aws.cloudfront.c6",
+          "type": "tf",
+          "prompt": "OAC requires the S3 origin to be the bucket's REST endpoint, not the static website endpoint.",
+          "answer": true,
+          "why": "A website endpoint must be configured as a custom origin, and neither OAC nor OAI can sign requests to it, so the bucket would have to be public. The REST endpoint keeps the bucket private."
+        },
+        {
+          "id": "aws.cloudfront.c7",
+          "type": "cloze",
+          "prompt": "The first ___ invalidation paths per month are free; after that each path costs $0.005.",
+          "answer": "1,000",
+          "why": "1,000 paths per month are free and a wildcard like /* counts as one path. Teams that invalidate dozens of files per deploy burn through the allowance; hashed filenames make it a non-issue."
+        },
+        {
+          "id": "aws.cloudfront.c8",
+          "type": "cloze",
+          "prompt": "The OAC bucket policy grants the service principal cloudfront.amazonaws.com with a condition that ___ equals the distribution ARN.",
+          "answer": "AWS:SourceArn",
+          "why": "Without the SourceArn condition any CloudFront distribution in any account could read the bucket through OAC. The condition pins access to your distribution."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.cloudfront.e1",
+          "prompt": "Whiteboard how the React front end gets served, from a developer's npm run build to a partner's browser in Frankfurt. Where do caching and invalidation fit?",
+          "seconds": 120,
+          "modelAnswer": "CodeBuild runs npm ci and npm run build, producing index.html plus hashed assets. The pipeline syncs the build to a private S3 bucket: assets get Cache-Control max-age of a year and immutable, index.html gets no-cache. Then it invalidates /index.html on the distribution. The bucket has Block Public Access on; the only reader is CloudFront through origin access control, with a bucket policy allowing the CloudFront service principal when the SourceArn is my distribution. The partner in Frankfurt hits the nearest edge; a cache hit on an asset is served from the edge, a miss goes to the S3 REST endpoint over a signed request. The default behavior uses CachingOptimized; a second behavior for /api/* uses CachingDisabled and forwards everything except Host to API Gateway. For deep links a CloudFront Function rewrites extensionless paths to index.html so React Router takes over, instead of S3 returning 403. WAF and a certificate from ACM in us-east-1 sit on the distribution. Because the asset filenames are hashed, caching is aggressive and the only invalidation per deploy is one path, well within the free thousand.",
+          "rubric": [
+            "Build artifact goes to a private bucket with OAC as the only reader",
+            "Different Cache-Control for hashed assets versus index.html",
+            "Separate behaviors for static content and /api/* with correct policies",
+            "SPA fallback for deep links (function or custom error response)",
+            "Invalidation strategy limited to index.html"
+          ]
+        },
+        {
+          "id": "aws.cloudfront.e2",
+          "prompt": "A partner deep-links /matters/4821 from an email and sees an XML AccessDenied page. Explain what happened and the two ways you would fix it, with trade-offs.",
+          "seconds": 120,
+          "modelAnswer": "The route exists only in React; there is no object called matters/4821 in S3. CloudFront's origin access control can GetObject but cannot ListBucket, so S3 refuses to say the key is missing and returns 403 AccessDenied, which CloudFront passes through. Fix one: a custom error response on the distribution mapping 403 and 404 to /index.html with a 200 status. It is a one-line change, but it hides genuine 403s and 404s, including misconfigured bucket policies, and every miss costs an origin round trip. Fix two: a CloudFront Function on viewer-request that rewrites paths without a file extension to /index.html before the cache lookup. It is a few lines of JavaScript, runs in under a millisecond, keeps real errors visible, and the rewritten request hits the cached index.html at the edge. The cost is a tiny per-request charge and a rule that must exclude /api/*. For a legal client I pick the function, because I want a real 403 to look like a 403 when a bucket policy breaks.",
+          "rubric": [
+            "Correctly explains 403 due to missing ListBucket permission",
+            "Describes the custom error response approach and its downside",
+            "Describes the CloudFront Function rewrite approach",
+            "Compares the two on error visibility and caching",
+            "States a choice and justifies it"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.cloudfront.s1",
+          "situation": "A law firm wants to go live in two weeks. To save time, a developer proposes uploading client exhibit PDFs into the same S3 bucket that holds the React build, under an /exhibits/ prefix, so the app can link to them directly through CloudFront.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Refuse. Keep documents in a separate private bucket with SSE-KMS, and have the API issue short-lived presigned URLs after checking the user's access to the matter.",
+              "verdict": "best",
+              "why": "The SPA bucket is effectively public through CloudFront: anyone who learns or guesses /exhibits/x.pdf can download privileged material. Documents need per-request authorization, which presigned URLs from an authenticated API provide."
+            },
+            {
+              "text": "Use the same distribution but add a separate /exhibits/* behavior protected by CloudFront signed cookies issued after login.",
+              "verdict": "ok",
+              "why": "Signed cookies do restrict access, but they are coarse (any signed-in user can read any exhibit unless you build per-matter policies) and keep privileged data in the front-end bucket; workable, not ideal."
+            },
+            {
+              "text": "Accept it for the pilot and add authentication later, since the URLs are hard to guess.",
+              "verdict": "bad",
+              "why": "Obscurity is not access control; CloudFront access logs, browser history and shared links expose the URLs, and a law firm pilot still holds privileged documents."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.s3",
+      "title": "S3 for Client Documents",
+      "tease": "Governance or compliance mode: one still lets the root user delete the audit trail. Which?",
+      "lesson": {
+        "body": "S3 is where the documents, the extracted text and the audit trail live, so most of the compliance conversation happens here. Since 2023 new buckets have **Block Public Access** on and default encryption with **SSE-S3**. For client documents use **SSE-KMS** with a customer managed key: the key policy becomes a second access-control layer (no `kms:Decrypt`, no document) and every decrypt lands in CloudTrail. Turn on **S3 Bucket Keys** to cut KMS request costs by up to 99%; without them each object touch is a KMS call.\n\n**Versioning** turns overwrites and deletes into new versions and delete markers, which is your protection against an agent or a user clobbering a file. Pair it with lifecycle rules: expire noncurrent versions after N days, transition cold matters to Glacier classes, and always add the **abort incomplete multipart uploads** rule, because abandoned parts are invisible in listings but billed.\n\n**Presigned URLs** are bearer tokens: SigV4-signed with the creator's credentials, honoured only while those credentials and the creator's permissions are valid. With IAM user keys they can last up to 7 days; with a role (ECS task, Lambda) they die when the role session expires, typically 1 to 6 hours, regardless of the expiry you asked for. Generate them for minutes, not days, after the API has authorized the user for that matter.\n\n**Object Lock** gives WORM storage and requires versioning. **Governance mode** blocks deletes unless the caller has `s3:BypassGovernanceRetention` and sends `x-amz-bypass-governance-retention: true`. **Compliance mode** cannot be shortened or removed by anyone, including root, until the retain-until date; the only escape is closing the account. A **legal hold** has no expiry and stays until explicitly removed. For chain-of-custody and audit logs, compliance mode plus default retention is the right tool; it is the Azure immutable blob policy you may already know.",
+        "snippet": "resource \"aws_s3_bucket_versioning\" \"audit\" {\n  bucket = aws_s3_bucket.audit.id\n  versioning_configuration { status = \"Enabled\" }\n}\n\nresource \"aws_s3_bucket_object_lock_configuration\" \"audit\" {\n  bucket = aws_s3_bucket.audit.id\n  rule {\n    default_retention {\n      mode  = \"COMPLIANCE\"\n      years = 7\n    }\n  }\n}\n\nresource \"aws_s3_bucket_lifecycle_configuration\" \"docs\" {\n  bucket = aws_s3_bucket.docs.id\n  rule {\n    id     = \"hygiene\"\n    status = \"Enabled\"\n    abort_incomplete_multipart_upload { days_after_initiation = 7 }\n    noncurrent_version_expiration     { noncurrent_days = 90 }\n  }\n}",
+        "snippetLang": "hcl",
+        "source": {
+          "title": "Locking objects with Object Lock - Amazon S3",
+          "url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "aws.s3.c1",
+          "type": "mc",
+          "prompt": "Your ECS task generates a presigned download URL with expires-in of 7 days. How long is it actually valid?",
+          "options": [
+            "7 days, as requested",
+            "Until the task role's temporary credentials expire, typically 1 to 6 hours",
+            "12 hours, the S3 maximum",
+            "36 hours, the STS maximum"
+          ],
+          "answer": 1,
+          "why": "A presigned URL is only as long-lived as the credentials that signed it; role credentials rotate, so the URL dies with them even if the signature says otherwise. The 7-day figure applies only to long-lived IAM user keys."
+        },
+        {
+          "id": "aws.s3.c2",
+          "type": "mc",
+          "prompt": "A client's compliance team requires that chain-of-custody logs cannot be deleted by anyone, including AWS account administrators, for seven years. You configure:",
+          "options": [
+            "Object Lock in governance mode with a 7-year default retention",
+            "Object Lock in compliance mode with a 7-year default retention",
+            "Versioning plus MFA delete",
+            "A legal hold on every object"
+          ],
+          "answer": 1,
+          "why": "Only compliance mode is immune to every principal, root included; governance mode can be bypassed by anyone holding s3:BypassGovernanceRetention. Legal holds work but have no expiry and must be removed manually, so they do not express 'seven years'."
+        },
+        {
+          "id": "aws.s3.c3",
+          "type": "mc",
+          "prompt": "Which feature reduces the KMS request cost of SSE-KMS by up to 99% for a bucket with millions of small objects?",
+          "options": [
+            "S3 Bucket Keys",
+            "S3 Intelligent-Tiering",
+            "S3 Transfer Acceleration",
+            "SSE-C with a client-held key"
+          ],
+          "answer": 0,
+          "why": "A Bucket Key is a short-lived bucket-level key derived from your KMS key, so S3 stops calling KMS for every object. Intelligent-Tiering saves storage cost, not request cost, and SSE-C pushes key management onto you."
+        },
+        {
+          "id": "aws.s3.c4",
+          "type": "mc",
+          "prompt": "Storage charges on a document bucket keep growing although the object count is flat. The most likely hidden cause is:",
+          "options": [
+            "Expired noncurrent versions still being billed",
+            "Incomplete multipart uploads with no abort rule",
+            "Glacier retrieval fees",
+            "CloudFront cache copies"
+          ],
+          "answer": 1,
+          "why": "Abandoned multipart parts do not appear in object listings but are billed until an abort-incomplete-multipart-upload lifecycle rule removes them. Expired versions, by definition, are gone."
+        },
+        {
+          "id": "aws.s3.c5",
+          "type": "tf",
+          "prompt": "Object Lock can only be enabled on a bucket that has S3 Versioning enabled.",
+          "answer": true,
+          "why": "Locks are properties of object versions, so versioning is mandatory; enabling Object Lock turns versioning on. It can now be enabled on existing buckets, not only at creation."
+        },
+        {
+          "id": "aws.s3.c6",
+          "type": "tf",
+          "prompt": "A legal hold expires automatically when the object version's retention period ends.",
+          "answer": false,
+          "why": "Legal holds are independent of retention periods and persist until a principal with s3:PutObjectLegalHold removes them. That independence is the point: litigation holds outlive scheduled retention."
+        },
+        {
+          "id": "aws.s3.c7",
+          "type": "cloze",
+          "prompt": "To delete a governance-mode locked version you need s3:BypassGovernanceRetention and the request header ___ set to true.",
+          "answer": "x-amz-bypass-governance-retention",
+          "why": "Both the permission and the explicit header are required; the console sends the header by default, which is why console deletes by admins 'just work' and surprise people during audits."
+        },
+        {
+          "id": "aws.s3.c8",
+          "type": "cloze",
+          "prompt": "Since January 2023, new S3 objects are encrypted by default with ___ when no encryption header is supplied.",
+          "answer": "SSE-S3",
+          "why": "SSE-S3 (AES-256 with S3-managed keys) is the baseline. It satisfies 'encrypted at rest' but gives no per-client key policy or CloudTrail decrypt trail, which is why client documents move to SSE-KMS."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.s3.e1",
+          "prompt": "How would you design document storage for a law firm client with privileged material? Walk me through encryption, access and retention.",
+          "seconds": 120,
+          "modelAnswer": "One private bucket per environment for documents, a separate one for audit and chain-of-custody records, both with Block Public Access and versioning. Encryption is SSE-KMS with a customer managed key per client, Bucket Keys on; the key policy lists only the ECS task role, the ingestion pipeline and a break-glass admin role, so even an over-broad bucket policy cannot hand out documents, and every decrypt is in CloudTrail. Nobody downloads directly: the API checks that the user is on the matter and then issues a presigned GET valid for a few minutes. Uploads go the same way with a presigned PUT and a size limit. Prefixes are firm, matter and document id, and S3 event notifications to EventBridge trigger text extraction and indexing. Retention: lifecycle rules move closed matters to Glacier Instant Retrieval and expire noncurrent versions after ninety days. The audit bucket uses Object Lock in compliance mode with a seven-year default retention, and matter documents under preservation get a legal hold. Access logs and CloudTrail data events on both buckets go to a third locked bucket.",
+          "rubric": [
+            "Separate buckets for documents and audit records, both private and versioned",
+            "SSE-KMS with customer managed key and key policy as a second control; Bucket Keys",
+            "No direct access; short-lived presigned URLs after matter-level authorization",
+            "Lifecycle rules for cold data and noncurrent versions",
+            "Object Lock compliance mode for audit, legal hold for preservation",
+            "Logging of access (CloudTrail data events or access logs)"
+          ]
+        },
+        {
+          "id": "aws.s3.e2",
+          "prompt": "Explain how a presigned URL works under the hood and the mistakes you have seen people make with them.",
+          "seconds": 120,
+          "modelAnswer": "A presigned URL is the normal S3 request with the authentication moved into the query string: the signer computes a SigV4 signature over the method, bucket, key, headers and an expiry using its own access key and secret, and appends the credential scope, signed headers, expiry and signature. S3 recomputes the signature, checks the clock, and then evaluates the request as if the signer had made it, so the signer's IAM permissions and the bucket policy still apply at use time. It is a bearer token: whoever has it can use it, repeatedly, until expiry. Mistakes I have seen: signing with a role and asking for days, when the URL dies with the role session after an hour or so; signing with a broad admin identity so a leaked URL for one key proves the identity could reach others; forgetting that the content type and headers must match exactly, producing SignatureDoesNotMatch; and generating URLs before authorizing the user, so the URL becomes the authorization. I keep them short, generate them per request after an entitlement check, and log who received which key.",
+          "rubric": [
+            "Describes SigV4 signature in query string and server-side recomputation",
+            "States that permissions are evaluated at use time using the signer's identity",
+            "Calls it a bearer token and draws the consequence",
+            "Names the credential-lifetime trap with roles",
+            "Gives at least two other concrete mistakes"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.s3.s1",
+          "situation": "Opposing counsel serves a preservation notice on a matter. Your platform stores the matter's 40,000 documents and a per-action audit log in S3. The team lead suggests governance-mode Object Lock everywhere 'so admins can still fix mistakes', and a 30-day retention.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Put the audit bucket in compliance mode with multi-year default retention, apply legal holds to the matter's document versions, and keep bypass permissions off every role.",
+              "verdict": "best",
+              "why": "A preservation duty has no known end date, which is what legal holds express; the audit trail must be provably untouchable, which only compliance mode guarantees against admins and root."
+            },
+            {
+              "text": "Use governance mode with a long retention, grant s3:BypassGovernanceRetention to a single break-glass role, and alarm on any use of it in CloudTrail.",
+              "verdict": "ok",
+              "why": "Defensible and recoverable from mistakes, but the existence of a bypass path is exactly what opposing counsel will probe; it is weaker evidence than compliance mode."
+            },
+            {
+              "text": "Rely on versioning and MFA delete; nothing is really deleted anyway.",
+              "verdict": "bad",
+              "why": "Versioning protects against accidents, not against a principal with permission to delete versions permanently; it is not WORM and would not survive a spoliation challenge."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.ecr",
+      "title": "ECR",
+      "tease": "Two tasks run the same ':latest' tag and behave differently. What exactly did the tag lie about?",
+      "lesson": {
+        "body": "Amazon ECR is the private registry the ECS tasks (and AgentCore Runtime) pull from. A repository URI looks like `123456789012.dkr.ecr.eu-central-1.amazonaws.com/agent-api`. Docker authenticates with a 12-hour token: `aws ecr get-login-password | docker login --username AWS --password-stdin <registry>`. ECS pulls using the **task execution role**, which needs `ecr:GetAuthorizationToken`, `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer`; confusing it with the task role is the classic `CannotPullContainerError`.\n\n**Tags versus digests.** A tag is a mutable pointer; a digest (`sha256:...`) is the content address of the manifest and cannot change. Two tasks started minutes apart from `:latest` can run different images if someone re-pushed. Deploy by digest, or make tags immutable: `IMMUTABLE` makes a re-push fail with `ImageTagAlreadyExistsException`. Newer settings `IMMUTABLE_WITH_EXCLUSION` and `MUTABLE_WITH_EXCLUSION` take wildcard filters, so you can keep `latest` or `dev-*` floating while release tags stay frozen.\n\n**Scanning.** Basic scanning uses AWS native technology to find OS package CVEs, on push or on demand, once per image per 24 hours, and never again unless you ask. **Enhanced scanning** hands the registry to Amazon Inspector: OS plus language packages (Python, Java, .NET), continuous rescanning as new CVEs publish, findings in Security Hub, billed through Inspector. For a client with a vulnerability SLA, enhanced scanning plus a pipeline gate is the answer.\n\n**Lifecycle policies** keep storage and attack surface down. Rules have a `rulePriority` (lower number wins), a `tagStatus` of `tagged`, `untagged` or `any`, either `tagPrefixList` or `tagPatternList`, a `countType` of `imageCountMoreThan` or `sinceImagePushed` (plus `sinceImagePulled` for archiving), and an action of `expire` or archive. Every image is matched by at most one rule, and expiry happens within 24 hours of qualifying. Preview the policy before applying. Also useful: pull-through cache for Docker Hub rate limits, and multi-architecture manifests, since Fargate Graviton and AgentCore Runtime want **ARM64**.",
+        "snippet": "REG=123456789012.dkr.ecr.eu-central-1.amazonaws.com\nREPO=$REG/agent-api\nSHA=$(git rev-parse --short HEAD)\n\naws ecr get-login-password --region eu-central-1 \\\n  | docker login --username AWS --password-stdin $REG\n\ndocker buildx build --platform linux/arm64 -t $REPO:$SHA --push .\n\n# Resolve the immutable digest for the deploy step\nDIGEST=$(aws ecr describe-images --repository-name agent-api \\\n  --image-ids imageTag=$SHA \\\n  --query 'imageDetails[0].imageDigest' --output text)\necho \"$REPO@$DIGEST\"",
+        "snippetLang": "bash",
+        "source": {
+          "title": "Automate the cleanup of images by using lifecycle policies in Amazon ECR",
+          "url": "https://docs.aws.amazon.com/AmazonECR/latest/userguide/LifecyclePolicies.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "aws.ecr.c1",
+          "type": "mc",
+          "prompt": "Why does a mature pipeline reference the image by digest in the ECS task definition rather than by tag?",
+          "options": [
+            "Digests pull faster because layers are pre-fetched",
+            "A digest is a content hash that cannot be re-pointed, so the deployed artifact is exactly what was scanned and tested",
+            "ECS does not support tags in task definitions",
+            "Digests are shorter than tags and reduce task definition size"
+          ],
+          "answer": 1,
+          "why": "Tags are mutable pointers; a digest is the manifest's sha256 and identifies one immutable artifact. Pull speed is unaffected, and ECS happily accepts tags, which is exactly how the ':latest' drift problem arises."
+        },
+        {
+          "id": "aws.ecr.c2",
+          "type": "mc",
+          "prompt": "A lifecycle policy has rule priority 1 expiring untagged images older than 7 days and rule priority 10 keeping only the last 30 'release-*' images. An untagged image is 9 days old. What happens?",
+          "options": [
+            "Rule 10 is evaluated first because higher numbers run first",
+            "Rule 1 expires it; lower priority numbers take precedence and an image is matched by at most one rule",
+            "Both rules apply and the image is expired twice",
+            "Nothing, because untagged images are never expired"
+          ],
+          "answer": 1,
+          "why": "Lower rulePriority wins and each image is expired by exactly one or zero rules. Untagged images are the most common target for cleanup; the preview feature shows exactly which images a rule set would remove."
+        },
+        {
+          "id": "aws.ecr.c3",
+          "type": "mc",
+          "prompt": "What does enhanced scanning add over basic scanning?",
+          "options": [
+            "Scanning of Windows images only",
+            "Language-package coverage and continuous rescanning through Amazon Inspector as new CVEs are published",
+            "Faster scans because they run at build time",
+            "Signature verification of the image manifest"
+          ],
+          "answer": 1,
+          "why": "Basic scanning covers OS packages once per push or on demand; enhanced scanning delegates to Inspector, which also inspects Python, Java and .NET dependencies and rescans stored images when the vulnerability database changes. Signing is a separate feature."
+        },
+        {
+          "id": "aws.ecr.c4",
+          "type": "mc",
+          "prompt": "An ECS task fails with CannotPullContainerError: access denied. Which identity needs ECR permissions?",
+          "options": [
+            "The task role used by the application code",
+            "The task execution role used by the ECS agent to pull images and fetch secrets",
+            "The EC2 instance profile, even on Fargate",
+            "The ECS service-linked role"
+          ],
+          "answer": 1,
+          "why": "The execution role acts on behalf of ECS to pull the image and read Secrets Manager values; the task role is what your code assumes at runtime for S3, Bedrock and so on. Granting ECR rights to the task role does nothing for the pull."
+        },
+        {
+          "id": "aws.ecr.c5",
+          "type": "tf",
+          "prompt": "Basic scanning automatically rescans stored images when new CVEs are published.",
+          "answer": false,
+          "why": "Basic scanning runs on push or on manual request and at most once per image per 24 hours; only enhanced scanning (Inspector) rescans continuously. A clean basic scan from last month says nothing about today."
+        },
+        {
+          "id": "aws.ecr.c6",
+          "type": "tf",
+          "prompt": "With tag immutability enabled, pushing an image with an existing tag fails with ImageTagAlreadyExistsException.",
+          "answer": true,
+          "why": "That exception is the whole point: release tags can never be silently re-pointed. If you still want a floating tag like 'latest', use IMMUTABLE_WITH_EXCLUSION with a wildcard filter."
+        },
+        {
+          "id": "aws.ecr.c7",
+          "type": "cloze",
+          "prompt": "An image is uniquely identified by its ___, a sha256 hash of the manifest that cannot be re-pointed.",
+          "answer": "digest",
+          "why": "The digest is what ECS actually pulls after resolving a tag; pinning it in the task definition removes the resolution step and the drift it allows."
+        },
+        {
+          "id": "aws.ecr.c8",
+          "type": "cloze",
+          "prompt": "In a lifecycle rule, countType ___ expires every matching image whose push time is older than countNumber days.",
+          "answer": "sinceImagePushed",
+          "why": "sinceImagePushed is age-based and needs countUnit days; imageCountMoreThan is count-based and keeps the newest N. Mixing them up either deletes your rollback images or never deletes anything."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.ecr.e1",
+          "prompt": "Explain tags versus digests in ECR and how you would make our container deployments reproducible.",
+          "seconds": 120,
+          "modelAnswer": "A tag is a human-friendly pointer that anyone with push rights can move; a digest is the sha256 of the image manifest, so it names exactly one set of layers forever. If the task definition says agent-api:latest, two tasks started an hour apart can run different code, and a rollback to 'the previous latest' is impossible because the pointer is gone. To make deployments reproducible I do three things. The build tags with the git SHA and pushes once. The pipeline then resolves the digest with describe-images and writes repo@sha256 into the task definition revision, so what ECS runs is the artifact that was tested and scanned. And the repository uses immutable tags, with an exclusion for a floating dev tag if the team insists, so a release tag can never be re-pushed. Deployments are now a task definition revision pointing at a digest, which gives trivial rollback: redeploy the previous revision. It is the same discipline as pinning NuGet package versions with a lock file instead of floating ranges.",
+          "rubric": [
+            "Defines tag as mutable pointer and digest as content hash",
+            "Explains the drift and rollback problem with ':latest'",
+            "Pipeline resolves digest and pins it in the task definition",
+            "Mentions immutable tags, optionally with exclusion filters",
+            "Rollback via previous task definition revision"
+          ]
+        },
+        {
+          "id": "aws.ecr.e2",
+          "prompt": "A Fortune 100 client has a 72-hour SLA on critical vulnerabilities in running containers. How would you set up the registry and pipeline to meet it?",
+          "seconds": 120,
+          "modelAnswer": "I would enable enhanced scanning at the registry level so Amazon Inspector scans every image on push and keeps rescanning stored images as new CVEs appear, covering OS and language packages, including the Python agent dependencies. Findings flow to Security Hub and EventBridge, where a rule on a new critical finding opens a ticket and notifies the on-call channel; that gives me the detection half of the SLA. For the remediation half, the pipeline gates on scan results: CodeBuild waits for the scan, fails the build on critical findings, and base images are rebuilt weekly on a schedule so patches arrive without a code change. Images are pinned by digest, so I always know which digest is running in which environment, and I can answer 'is the vulnerable image deployed anywhere' with a query. Lifecycle policies expire untagged and old images so the registry only holds what is deployable, which keeps the finding list meaningful. Scanning data stays in the account; Inspector costs are per image scanned plus rescans, which is modest next to the SLA penalty.",
+          "rubric": [
+            "Enhanced scanning via Inspector with continuous rescanning",
+            "Alerting path for new critical findings (Security Hub, EventBridge)",
+            "Pipeline gate on scan results",
+            "Scheduled base image rebuilds",
+            "Digest pinning to map findings to running workloads",
+            "Lifecycle policies to keep the registry small"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.ecr.s1",
+          "situation": "During a Fortune 100 security review the client's scanner finds a critical CVE in a Python library inside your agent image. Your ECR basic scan from the original push shows no findings. The deadline for the review response is tomorrow.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Switch the registry to enhanced scanning, rebuild the image on a patched base with the library upgraded, deploy by digest, and gate the pipeline on critical findings going forward.",
+              "verdict": "best",
+              "why": "Basic scanning never looked at language packages and never rescanned; enhanced scanning closes both gaps, and the rebuild plus gate turns the one-off fix into a process the client can audit."
+            },
+            {
+              "text": "Add an open-source scanner such as Trivy to CodeBuild and fail builds on critical findings, keep basic scanning as is.",
+              "verdict": "ok",
+              "why": "It catches language CVEs at build time, but it does not rescan images already in the registry when new CVEs publish, so the next finding will again come from the client."
+            },
+            {
+              "text": "Explain that the ECR scan was clean, re-tag the current image as 'latest' and commit to manual monthly reviews.",
+              "verdict": "bad",
+              "why": "A clean basic scan is not evidence of safety for language packages, re-tagging changes nothing in the artifact, and manual monthly reviews cannot meet any serious SLA."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.codepipeline",
+      "title": "CodePipeline and CodeBuild",
+      "tease": "A V1 pipeline costs $1 a month and a V2 pipeline $0.002 a minute. Which one is the budget trap?",
+      "lesson": {
+        "body": "Map it onto Azure DevOps first. An Azure Pipeline with stages, jobs and steps becomes a **CodePipeline** (stages and actions) that delegates the actual work to **CodeBuild** projects driven by `buildspec.yml`. Service connections become **CodeConnections** (renamed from CodeStar Connections in March 2024) for GitHub, GitLab and Bitbucket; AWS CodeCommit stopped accepting new customers in mid-2024, so Git lives in GitHub. Variable groups and Key Vault references become `env.parameter-store` and `env.secrets-manager` entries in the buildspec, masked in logs when the value appears exactly as stored. Environments with approval gates become a Manual approval action plus V2 **stage conditions**. Hosted agents become CodeBuild compute: on-demand containers, Lambda compute for short jobs, or reserved capacity.\n\n**Pipeline types.** V1 costs $1 per active pipeline per month. V2 costs $0.002 per action-execution minute with 100 free minutes, and adds the features you actually want: triggers with branch, tag, pull-request and file-path filters; pipeline-level variables you can override at start; stage conditions on entry, failure and success; automatic rollback to the last successful deployment; QUEUED and PARALLEL execution modes beside the default SUPERSEDED; and the Commands action for small scripts without a CodeBuild project. Stages hand artifacts to each other through an S3 artifact bucket.\n\n**buildspec 0.2** has phases `install` (with `runtime-versions`), `pre_build` (ECR login), `build` (tests, `docker build`) and `post_build` (push, write `imagedefinitions.json`). All commands in a build share one shell, so `cd` and exported variables persist. Each phase accepts `finally` and `on-failure: ABORT | CONTINUE | RETRY`, `reports` ingest JUnit output, and `exported-variables` flow to later pipeline stages.\n\n**Deploy.** The ECS standard action reads `imagedefinitions.json` and creates a new task definition revision for a rolling update; CodeDeploy blue/green swaps ALB target groups with a bake time; and Terraform runs as a CodeBuild `plan` action, a Manual approval, then `apply` with a least-privilege role.",
+        "snippet": "version: 0.2\nenv:\n  variables:\n    REPO: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/agent-api\n  secrets-manager:\n    PYPI_TOKEN: ci/pypi:token\nphases:\n  install:\n    runtime-versions:\n      python: 3.12\n  pre_build:\n    commands:\n      - aws ecr get-login-password | docker login --username AWS --password-stdin ${REPO%%/*}\n      - export TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION:0:7}\n  build:\n    commands:\n      - pytest -q --junitxml=reports/junit.xml\n      - docker build -t $REPO:$TAG .\n  post_build:\n    commands:\n      - docker push $REPO:$TAG\n      - printf '[{\"name\":\"agent-api\",\"imageUri\":\"%s\"}]' $REPO:$TAG > imagedefinitions.json\nartifacts:\n  files: [imagedefinitions.json]",
+        "snippetLang": "text",
+        "source": {
+          "title": "Build specification reference for CodeBuild",
+          "url": "https://docs.aws.amazon.com/codebuild/latest/userguide/build-spec-ref.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "aws.codepipeline.c1",
+          "type": "mc",
+          "prompt": "In Azure DevOps you used a service connection to GitHub. The AWS equivalent for CodePipeline's source stage is:",
+          "options": [
+            "A CodeCommit mirror of the GitHub repository",
+            "An AWS CodeConnections connection (formerly CodeStar Connections)",
+            "A GitHub personal access token stored in Secrets Manager and read by a webhook",
+            "AWS CodeArtifact"
+          ],
+          "answer": 1,
+          "why": "CodeConnections is the OAuth-app based link to GitHub, GitLab or Bitbucket and powers V2 triggers with branch and PR filters. CodeCommit is closed to new customers, and token-based webhooks are the legacy GitHub v1 integration AWS steers away from."
+        },
+        {
+          "id": "aws.codepipeline.c2",
+          "type": "mc",
+          "prompt": "Which capability requires a V2 pipeline?",
+          "options": [
+            "A Manual approval action before production",
+            "Pipeline-level variables and triggers filtered on Git tags or pull requests",
+            "An S3 bucket as the source",
+            "A CodeBuild build action"
+          ],
+          "answer": 1,
+          "why": "Triggers with filters, pipeline-level variables, stage conditions, rollback and the Commands action are V2-only. Manual approvals and CodeBuild actions have always worked on V1."
+        },
+        {
+          "id": "aws.codepipeline.c3",
+          "type": "mc",
+          "prompt": "How is a V2 pipeline billed?",
+          "options": [
+            "$1 per active pipeline per month",
+            "$0.002 per action-execution minute, rounded up, with 100 free minutes per account per month",
+            "Per stage transition",
+            "It is free; you only pay for CodeBuild"
+          ],
+          "answer": 1,
+          "why": "V2 charges per action-execution minute (approvals and custom actions excluded) and shares 100 free minutes across the account; V1 is the flat $1 per active pipeline. Long waits inside an action are what make V2 the budget trap."
+        },
+        {
+          "id": "aws.codepipeline.c4",
+          "type": "mc",
+          "prompt": "In buildspec version 0.2, a command in pre_build exits non-zero and no on-failure is set. What happens?",
+          "options": [
+            "The remaining pre_build commands run, then build starts",
+            "The build fails: remaining commands in the phase are skipped, the phase's finally block still runs, later phases do not",
+            "CodeBuild retries the command three times",
+            "The failure is logged and the artifact is still uploaded"
+          ],
+          "answer": 1,
+          "why": "Default failure handling aborts: the rest of the commands are skipped, finally runs, and subsequent phases are skipped. RETRY and CONTINUE exist but must be requested explicitly with on-failure."
+        },
+        {
+          "id": "aws.codepipeline.c5",
+          "type": "tf",
+          "prompt": "In buildspec 0.2 every command runs in a separate shell, so a cd in one command does not affect the next.",
+          "answer": false,
+          "why": "That was version 0.1 behaviour. Version 0.2 runs all commands in one shell instance, so working directory and exported variables carry across commands, which is why AWS recommends 0.2."
+        },
+        {
+          "id": "aws.codepipeline.c6",
+          "type": "tf",
+          "prompt": "Secrets referenced through env.secrets-manager are masked in CodeBuild logs when they appear exactly as stored.",
+          "answer": true,
+          "why": "Masking matches the exact stored string; base64-encoding, reversing or concatenating a secret produces a different string that is printed in clear. Store secrets in the form the build needs."
+        },
+        {
+          "id": "aws.codepipeline.c7",
+          "type": "cloze",
+          "prompt": "AWS CodeStar Connections was renamed to AWS ___ in March 2024.",
+          "answer": "CodeConnections",
+          "why": "The rename changed API, CLI and ARN prefixes (codestar-connections to codeconnections); IAM policies must use the prefix matching the resource, a frequent cause of AccessDenied in older Terraform."
+        },
+        {
+          "id": "aws.codepipeline.c8",
+          "type": "cloze",
+          "prompt": "CodePipeline's standard ECS deploy action reads the image URI from a build artifact file named ___.",
+          "answer": "imagedefinitions.json",
+          "why": "The action takes the container name and imageUri from that JSON, registers a new task definition revision and updates the service; CodeDeploy blue/green uses appspec and taskdef files instead."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.codepipeline.e1",
+          "prompt": "You have lived in Azure DevOps. Map it onto CodePipeline and CodeBuild for me, and tell me honestly what you would miss.",
+          "seconds": 120,
+          "modelAnswer": "The mapping is close. An Azure YAML pipeline with stages and jobs is a CodePipeline with stages and actions; the steps that actually run commands live in CodeBuild projects described by buildspec.yml, with install, pre_build, build and post_build phases. Service connections are CodeConnections to GitHub. Variable groups and Key Vault links are env.parameter-store and env.secrets-manager entries. Environments with approvals are a Manual approval action plus V2 stage conditions, and the Azure DevOps 'rollback' story maps to V2 automatic rollback to the last successful deployment. Agents are CodeBuild compute; artifacts travel through an S3 bucket instead of Pipeline Artifacts. What I would miss: a single YAML file for the whole pipeline, because the pipeline definition and the buildspec are separate things unless I define the pipeline in Terraform; templates and reusable steps across repos; the richer UI for test results and PR decoration; and work item linking. On the other side I gain native IAM for every action, per-action billing on V2, and a deployment action that understands ECS task definitions directly.",
+          "rubric": [
+            "Maps stages/jobs/steps to CodePipeline stages/actions and CodeBuild buildspec",
+            "Maps service connections to CodeConnections and secrets to Parameter Store or Secrets Manager",
+            "Maps approvals/environments to manual approval and V2 stage conditions",
+            "Names at least two honest gaps (templates, single YAML, UI)",
+            "Names at least one advantage (IAM integration, ECS deploy action)"
+          ]
+        },
+        {
+          "id": "aws.codepipeline.e2",
+          "prompt": "How do you run Terraform safely from a pipeline? Who approves, where is state, and what can the role do?",
+          "seconds": 120,
+          "modelAnswer": "Two CodeBuild projects and one approval. The plan project runs terraform init against an S3 backend with use_lockfile, encrypted with KMS, then terraform plan -out and uploads the plan file as an artifact and the human-readable plan into the pipeline as a report or variable. A Manual approval action shows the plan to a reviewer; on V2 I add a stage condition that fails fast if the plan contains destroys of protected resources, using a small script. The apply project runs terraform apply on that exact saved plan file, never a fresh plan, so what was approved is what runs. Roles: the plan role is read-only plus state access; the apply role is scoped to the services the module manages and denied IAM-privilege escalation and state bucket deletion; nobody runs apply from a laptop. State is one bucket per account with versioning and Object Lock in governance mode, bucket policy restricted to the two roles, because state contains secrets in plain text. Pull requests get a plan-only pipeline through a V2 trigger filter, and tags on main trigger the deploy pipeline.",
+          "rubric": [
+            "Separate plan and apply steps with a saved plan file applied, not a fresh plan",
+            "Manual approval between plan and apply, optionally stage conditions",
+            "Remote state in S3 with native locking and encryption, access restricted",
+            "Least-privilege, separate roles for plan and apply; no laptop applies",
+            "PR plan-only runs via triggers"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.codepipeline.s1",
+          "situation": "Friday 18:30. A partner reports that document download links return 500 for one firm. The fix is a one-line config change. Your production pipeline has a manual approval and takes 25 minutes. A colleague proposes updating the ECS service in the console with a hand-built image tagged 'hotfix'.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Run the normal pipeline with the fix, have the on-call lead approve while it builds, and rely on V2 rollback if the deploy fails; 25 minutes is acceptable.",
+              "verdict": "best",
+              "why": "The pipeline is the audit trail the client will ask for; it scans, tests and pins the digest, and a hotfix that bypasses it is the one most likely to be wrong at 18:30. Twenty-five minutes beats an unreproducible production state."
+            },
+            {
+              "text": "Trigger the pipeline from a hotfix branch with a V2 branch filter and a shorter test stage, then merge back to main.",
+              "verdict": "ok",
+              "why": "Still goes through CodeBuild and ECR with a digest, but a reduced test stage is a judgement call that needs a documented policy, and divergence between branch and main must be cleaned up."
+            },
+            {
+              "text": "Update the service in the console with the hand-built 'hotfix' image to restore service, and run the pipeline on Monday.",
+              "verdict": "bad",
+              "why": "Production now runs an unscanned image nobody can reproduce, the next pipeline run will silently overwrite it, and the console change is the kind of unaudited action that fails a Fortune 100 control review."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.rds",
+      "title": "RDS for PostgreSQL",
+      "tease": "Multi-AZ, read replicas, backups: only one saves you from a bad DELETE at 14:07. Which?",
+      "lesson": {
+        "body": "RDS runs PostgreSQL for you: instance class, gp3 storage with autoscaling, parameter groups (your `postgresql.conf`), patching in a maintenance window, and KMS encryption that must be chosen at creation. Majors go up to PostgreSQL 18; pgvector 0.8.x ships with 16, 17 and 18.\n\n**High availability.** A **Multi-AZ DB instance** keeps a synchronous standby in another AZ; it serves no reads, and failover flips the DNS CNAME in typically 60 to 120 seconds. A **Multi-AZ DB cluster** has a writer and two readable standbys across three AZs, semisynchronous replication (one acknowledgement needed), a reader endpoint and failover typically under 35 seconds. Neither protects against a bad statement: the delete replicates faithfully.\n\n**Backups.** Automated backups take a daily snapshot and ship transaction logs to S3 every five minutes, retained 0 to 35 days. **Point-in-time restore** builds a new instance at any second inside that window, up to `LatestRestorableTime`, which trails by about five minutes. Recovery from a bad DELETE at 14:07 is PITR to 14:06 and copying rows back.\n\n**Read replicas** use asynchronous streaming replication: up to 15 per instance for PostgreSQL, cross-Region allowed, promotable, cascading since 14.1. They lag, so they serve reporting and indexing, not read-your-writes.\n\n**Secrets.** With `manage_master_user_password` RDS generates the master password, stores it in Secrets Manager and rotates it every seven days by default; the app reads the secret per connection, or goes through **RDS Proxy** for pooling and IAM authentication.\n\n**pgvector versus OpenSearch.** `CREATE EXTENSION vector`, a `vector(1024)` column and an HNSW index (`vector_cosine_ops`) give sub-100 ms similarity search for a few million embeddings, with transactions and joins on matter metadata; `hnsw.iterative_scan` fixes filtered queries returning too few rows. Bedrock Knowledge Bases supports Aurora PostgreSQL. Choose OpenSearch for BM25 plus kNN hybrid ranking at tens of millions of chunks, or document-level security inside the engine.",
+        "snippet": "resource \"aws_db_instance\" \"main\" {\n  identifier                   = \"ediscovery-prod\"\n  engine                       = \"postgres\"\n  engine_version               = \"17\"\n  instance_class               = \"db.r7g.large\"\n  allocated_storage            = 100\n  max_allocated_storage        = 1000\n  storage_type                 = \"gp3\"\n  storage_encrypted            = true\n  kms_key_id                   = aws_kms_key.db.arn\n  multi_az                     = true\n  manage_master_user_password  = true\n  username                     = \"app_admin\"\n  backup_retention_period      = 35\n  deletion_protection          = true\n  performance_insights_enabled = true\n  db_subnet_group_name         = aws_db_subnet_group.isolated.name\n  vpc_security_group_ids       = [aws_security_group.db.id]\n  skip_final_snapshot          = false\n  final_snapshot_identifier    = \"ediscovery-prod-final\"\n}",
+        "snippetLang": "hcl",
+        "source": {
+          "title": "Restoring a DB instance to a specified time for Amazon RDS",
+          "url": "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_PIT.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "aws.rds.c1",
+          "type": "mc",
+          "prompt": "An engineer ran DELETE FROM review_tags without a WHERE clause at 14:07; it was noticed at 15:00. The database is Multi-AZ with a read replica and 35-day backups. How do you recover?",
+          "options": [
+            "Point-in-time restore to 14:06 into a new instance, then copy the rows back",
+            "Fail over to the Multi-AZ standby, which still has the rows",
+            "Promote the read replica, which lags and may still have the rows",
+            "Restore last night's automated snapshot"
+          ],
+          "answer": 0,
+          "why": "Replication, synchronous or not, replicates the delete; by 15:00 the replica is long past it. PITR uses the five-minute transaction logs to rebuild the state at any second, and the snapshot alone would lose a day of work."
+        },
+        {
+          "id": "aws.rds.c2",
+          "type": "mc",
+          "prompt": "Which statement about Multi-AZ DB clusters versus Multi-AZ DB instances is correct?",
+          "options": [
+            "Both have one standby, but clusters failover faster",
+            "A cluster has two readable standbys, semisynchronous replication and failover typically under 35 seconds; an instance deployment has one non-readable standby and 60 to 120 second failover",
+            "A cluster is just Aurora under another name",
+            "Instance deployments are asynchronous, clusters are synchronous"
+          ],
+          "answer": 1,
+          "why": "The cluster adds read capacity and faster failover; the instance deployment is fully synchronous but its standby is invisible to applications. Multi-AZ DB clusters are explicitly not Aurora, a common confusion."
+        },
+        {
+          "id": "aws.rds.c3",
+          "type": "mc",
+          "prompt": "You let RDS manage the master password in Secrets Manager. How often is it rotated by default?",
+          "options": [
+            "Every 24 hours",
+            "Every 7 days",
+            "Every 30 days",
+            "Never, unless you attach a rotation Lambda"
+          ],
+          "answer": 1,
+          "why": "RDS-managed secrets rotate every seven days by default with a 28-character generated password, no rotation Lambda required; the schedule is adjustable. Apps must fetch the secret per connection or use RDS Proxy, not cache it forever."
+        },
+        {
+          "id": "aws.rds.c4",
+          "type": "mc",
+          "prompt": "For a pgvector table of two million embeddings queried interactively, which index type do you create?",
+          "options": [
+            "IVFFlat, because it is the only pgvector index",
+            "HNSW with vector_cosine_ops, accepting longer build time and more memory for better recall and latency",
+            "A GIN index on the vector column",
+            "A BRIN index, since embeddings are append-only"
+          ],
+          "answer": 1,
+          "why": "HNSW gives the best query latency and recall and needs no training step; IVFFlat is cheaper to build but needs a representative dataset first and trades recall. GIN and BRIN do not support vector similarity operators."
+        },
+        {
+          "id": "aws.rds.c5",
+          "type": "tf",
+          "prompt": "In a Multi-AZ DB instance deployment the standby can serve read-only queries.",
+          "answer": false,
+          "why": "The standby exists only for failover; to serve reads you need a Multi-AZ DB cluster or a read replica. Sizing a reporting workload against 'the standby' is a classic design mistake."
+        },
+        {
+          "id": "aws.rds.c6",
+          "type": "tf",
+          "prompt": "RDS uploads transaction logs to S3 about every five minutes, so the latest restorable time can trail the present by up to roughly five minutes.",
+          "answer": true,
+          "why": "LatestRestorableTime is driven by log shipping cadence. For tighter RPO you need Aurora or application-level measures; PITR cannot restore to a second that has not been shipped yet."
+        },
+        {
+          "id": "aws.rds.c7",
+          "type": "cloze",
+          "prompt": "The maximum automated backup retention period in RDS is ___ days.",
+          "answer": "35",
+          "why": "Beyond 35 days you rely on manual snapshots or AWS Backup; legal clients with multi-year retention needs get monthly snapshots exported to S3 under Object Lock."
+        },
+        {
+          "id": "aws.rds.c8",
+          "type": "cloze",
+          "prompt": "RDS for PostgreSQL read replicas use ___ streaming replication, so a replica may lag behind the primary.",
+          "answer": "asynchronous",
+          "why": "Asynchronous replication means a replica can be seconds or minutes behind under load; reading your own write from a replica is not guaranteed, unlike a Multi-AZ standby, which is synchronous but unreadable."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.rds.e1",
+          "prompt": "Compare Multi-AZ, read replicas and backups. A partner says 'we have Multi-AZ, so our data is safe'. What do you tell them?",
+          "seconds": 120,
+          "modelAnswer": "They solve three different problems. Multi-AZ is availability: a synchronous standby in another Availability Zone takes over in a minute or two if the instance or the zone fails, with no data loss, and with a Multi-AZ DB cluster you get two readable standbys and failover under 35 seconds. But it replicates everything, including mistakes; a bad DELETE or a ransomware-style overwrite arrives on the standby at the same moment. Read replicas are scale and reporting: asynchronous copies, up to fifteen, that lag and can be promoted for disaster recovery in another Region, but again they replicate the mistake a few seconds later. Backups are the only thing that gives you yesterday: automated snapshots plus transaction logs every five minutes let me restore to any second in the last 35 days as a new instance. So to the partner I say Multi-AZ protects against hardware and zone failure, not against people or software. Safe means Multi-AZ for uptime, point-in-time restore tested quarterly for recovery, and snapshot copies in another account for the scenario where this account is compromised.",
+          "rubric": [
+            "Multi-AZ framed as availability with synchronous standby and failover times",
+            "Explains that replication propagates mistakes",
+            "Read replicas as asynchronous scale and DR, with lag",
+            "Backups and PITR as the only point-in-time recovery, 35-day window",
+            "Mentions testing restores or cross-account snapshot copies"
+          ]
+        },
+        {
+          "id": "aws.rds.e2",
+          "prompt": "When would you put embeddings in Postgres with pgvector rather than OpenSearch for an eDiscovery product?",
+          "seconds": 120,
+          "modelAnswer": "I would start with pgvector when the embedding count is in the low millions, the team already runs RDS, and the queries are mostly semantic search filtered by matter, custodian or date. The vector lives next to the document metadata, so the filter is a WHERE clause in the same transaction, and I get joins, foreign keys and backups for free. HNSW indexes with cosine ops give sub-100 millisecond queries, and pgvector 0.8 added iterative scans so selective filters do not return too few rows. It is one fewer system to secure and explain to a client. I move to OpenSearch when I need hybrid ranking, BM25 keyword relevance fused with kNN through normalization, which matters in legal search where exact terms, Bates numbers and names carry weight; when chunk counts reach tens of millions and I want to scale search nodes independently; or when I want document-level security enforced inside the engine for many reviewers. Bedrock Knowledge Bases supports both Aurora PostgreSQL and OpenSearch, so the choice does not lock the RAG layer.",
+          "rubric": [
+            "pgvector suited to low millions of vectors, metadata filtering, one system",
+            "Mentions HNSW and filtered search behaviour",
+            "OpenSearch for hybrid BM25 plus kNN relevance",
+            "OpenSearch for scale and independent search capacity",
+            "Notes compatibility with Bedrock Knowledge Bases for either"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.rds.s1",
+          "situation": "A regional law firm pilot: 200,000 documents, five reviewers, a fixed budget of a few hundred euros a month. The architecture proposal includes a three-master-node OpenSearch domain for vector search beside an RDS Postgres instance for metadata.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Drop the domain for the pilot: store embeddings in the existing Multi-AZ Postgres with pgvector and HNSW, keep the search interface behind an abstraction, and revisit OpenSearch when hybrid ranking or scale demands it.",
+              "verdict": "best",
+              "why": "At this scale pgvector is fast enough, keeps one database to back up and secure, and spends the budget on the model calls that actually produce value; the abstraction preserves the migration path."
+            },
+            {
+              "text": "Use an OpenSearch Serverless vector collection with capacity limits set low instead of a provisioned domain.",
+              "verdict": "ok",
+              "why": "Serverless removes node management and can scale to zero OCUs, but you still operate two data stores and a second security model for a pilot that does not need them yet."
+            },
+            {
+              "text": "Keep the three-master domain because the firm might grow and migrations are painful.",
+              "verdict": "bad",
+              "why": "Dedicated masters and multi-AZ data nodes alone exceed the whole monthly budget; sizing a pilot for a hypothetical future is how pilots get cancelled."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.opensearch",
+      "title": "Amazon OpenSearch Service",
+      "tease": "It forked from Elasticsearch 7.10. Which of your Elasticsearch habits now fails silently?",
+      "lesson": {
+        "body": "OpenSearch forked from Elasticsearch 7.10.2 in 2021. Amazon OpenSearch Service runs OpenSearch 2.x and 3.x (3.7 as of July 2026). Indices, mappings, analyzers, `bool` queries and aggregations transfer. What breaks: Elastic clients from 7.14 onward refuse non-Elastic servers, so use `opensearch-py` or the OpenSearch .NET client; security lives under `_plugins/_security` instead of X-Pack; nothing from Elasticsearch 8 exists.\n\n**Domains versus Serverless.** A **managed domain** is a cluster you size: data nodes across three AZs, three dedicated masters, Multi-AZ with standby, UltraWarm, VPC access, blue/green deployments on configuration changes. You still tune shards. **OpenSearch Serverless** offers collections of type search, vector search or time series; compute is measured in OCUs (6 GiB memory plus vCPU), billed separately for indexing and search. Collection groups allow a **minimum of 0 OCUs**, so idle dev collections cost nothing. The trade: no shard or refresh-interval control (about 10 seconds), a subset of APIs and plugins, no cross-account access.\n\n**Vectors.** A `knn_vector` field with `index.knn: true`. Engines: **faiss** (default; HNSW or IVF, fp16, product quantization, binary), **lucene** (HNSW with efficient filtering), and **nmslib**, now deprecated. HNSW defaults: `m` 16, `ef_construction` 100, `ef_search` 100. Bedrock Knowledge Bases requires faiss.\n\n**Hybrid search** is the legal-search feature: a `hybrid` query with up to five sub-queries (BM25 plus kNN) and a search pipeline whose `normalization-processor` rescales scores (`min_max`, `l2`, `z_score`) and combines them (arithmetic, geometric or harmonic mean), or a `score-ranker-processor` for reciprocal rank fusion.\n\n**Fine-grained access control** is the third security layer after network and the domain access policy. The master user is an IAM ARN or an internal-database user; roles grant cluster, index, **document-level** (a query per role, for example on `matter_id`) and **field-level** permissions, plus field masking. It requires HTTPS, encryption at rest and node-to-node encryption, and once enabled it cannot be turned off.",
+        "snippet": "PUT /chunks\n{\n  \"settings\": { \"index\": { \"knn\": true } },\n  \"mappings\": {\n    \"properties\": {\n      \"matter_id\":  { \"type\": \"keyword\" },\n      \"bates_no\":   { \"type\": \"keyword\" },\n      \"text\":       { \"type\": \"text\", \"analyzer\": \"english\" },\n      \"embedding\": {\n        \"type\": \"knn_vector\",\n        \"dimension\": 1024,\n        \"space_type\": \"cosinesimil\",\n        \"method\": {\n          \"name\": \"hnsw\",\n          \"engine\": \"faiss\",\n          \"parameters\": { \"m\": 16, \"ef_construction\": 128 }\n        }\n      }\n    }\n  }\n}",
+        "snippetLang": "json",
+        "source": {
+          "title": "Fine-grained access control in Amazon OpenSearch Service",
+          "url": "https://docs.aws.amazon.com/opensearch-service/latest/developerguide/fgac.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "aws.opensearch.c1",
+          "type": "mc",
+          "prompt": "You are creating the vector index that Bedrock Knowledge Bases will write into. Which engine must the knn_vector field use?",
+          "options": [
+            "nmslib",
+            "faiss",
+            "lucene",
+            "jvector"
+          ],
+          "answer": 1,
+          "why": "Knowledge Bases requires faiss; nmslib is explicitly unsupported and deprecated upstream. Lucene is a fine engine for filtered kNN in your own indexes, but the Bedrock ingestion job will not accept it."
+        },
+        {
+          "id": "aws.opensearch.c2",
+          "type": "mc",
+          "prompt": "Combining a BM25 match query and a kNN query in one request gives bad rankings because BM25 scores are unbounded and cosine scores are 0 to 1. What fixes it?",
+          "options": [
+            "Boost the kNN clause by 10",
+            "A hybrid query with a search pipeline containing a normalization-processor (or score-ranker-processor for RRF)",
+            "A function_score query with a script",
+            "Index the text twice with different analyzers"
+          ],
+          "answer": 1,
+          "why": "The normalization processor rescales each sub-query's scores (min_max, l2, z_score) before combining them with a mean, or RRF ignores raw scores entirely. A static boost cannot fix two incompatible scales across queries."
+        },
+        {
+          "id": "aws.opensearch.c3",
+          "type": "mc",
+          "prompt": "A reviewer must only ever see documents from matters they are assigned to, in a shared index. Which mechanism enforces that inside OpenSearch?",
+          "options": [
+            "A domain access policy per reviewer",
+            "A security group rule per reviewer",
+            "A fine-grained access control role with document-level security filtering on matter_id",
+            "A separate index per reviewer"
+          ],
+          "answer": 2,
+          "why": "Document-level security attaches a query to the role, so every search is filtered server-side regardless of what the client sends. Domain access policies work at URI level, and per-reviewer indices explode shard counts."
+        },
+        {
+          "id": "aws.opensearch.c4",
+          "type": "mc",
+          "prompt": "Which statement about OpenSearch Serverless is correct?",
+          "options": [
+            "You choose instance types and shard counts per collection",
+            "Capacity is in OCUs, billed separately for indexing and search, and a collection group can scale to a minimum of 0 OCUs",
+            "It supports cross-account data access policies",
+            "Manual snapshots and cross-Region replication work as on domains"
+          ],
+          "answer": 1,
+          "why": "Serverless hides shards and instances; you set min and max OCUs per collection group for indexing and search, and the minimum can now be 0. Cross-account access, manual snapshots and cross-Region replication are listed limitations."
+        },
+        {
+          "id": "aws.opensearch.c5",
+          "type": "tf",
+          "prompt": "Fine-grained access control can be disabled later if it causes problems.",
+          "answer": false,
+          "why": "Once enabled, FGAC stays enabled; you can change the master user but not remove the layer. Enable it on day one with an IAM master user and plan role mappings, because the migration period on existing domains is 30 days."
+        },
+        {
+          "id": "aws.opensearch.c6",
+          "type": "tf",
+          "prompt": "On OpenSearch Serverless you can tune the shard count and refresh interval of an index.",
+          "answer": false,
+          "why": "Sharding and refresh (about 10 seconds for search collections) are managed by the service. If your Elasticsearch habit is to set number_of_shards and refresh_interval, Serverless ignores you; that control is the reason to pick a domain."
+        },
+        {
+          "id": "aws.opensearch.c7",
+          "type": "cloze",
+          "prompt": "OpenSearch was forked from Elasticsearch version ___ in 2021.",
+          "answer": "7.10.2",
+          "why": "Everything after 7.10 (runtime fields in 7.11+, Elastic 8 features, newer client product checks) is absent. Knowing the fork point tells you which Elasticsearch knowledge still applies."
+        },
+        {
+          "id": "aws.opensearch.c8",
+          "type": "cloze",
+          "prompt": "One OpenSearch Compute Unit (OCU) combines ___ GiB of memory with corresponding vCPU.",
+          "answer": "6",
+          "why": "OCUs are the Serverless billing unit, counted separately for indexing and search; knowing the size lets you estimate whether a collection's hot data fits in the OCUs you capped."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.opensearch.e1",
+          "prompt": "You know Elasticsearch well. What changes when you move to Amazon OpenSearch Service, and how would you decide between a managed domain and Serverless for us?",
+          "seconds": 120,
+          "modelAnswer": "The query DSL, mappings, analyzers and bulk indexing are the same because OpenSearch forked from Elasticsearch 7.10. What changes is the surroundings: I use the OpenSearch clients because the Elastic ones refuse non-Elastic servers; security is the OpenSearch security plugin with fine-grained access control instead of X-Pack; and AWS runs the cluster, including blue/green deployments on configuration changes, so I stop managing nodes but lose some knobs. Anything from Elasticsearch 8 I have to forget. For the choice: a managed domain when I need control over shards, refresh interval and plugins, when the workload is steady and large enough that reserved instances beat per-OCU pricing, or when I need manual snapshots and cross-Region replication. Serverless when the team is small, usage is spiky, and I want vector search without capacity planning; with collection groups the minimum is now zero OCUs, so dev environments cost nothing idle. For this product I would start with a Serverless vector search collection with a VPC endpoint, because it is also the default store for Bedrock Knowledge Bases, and move to a domain if hybrid-search volume justifies tuning.",
+          "rubric": [
+            "Names the 7.10 fork and what still applies",
+            "Client and security differences (OpenSearch clients, security plugin and FGAC)",
+            "Domain criteria: control over shards and plugins, steady load, snapshots and replication",
+            "Serverless criteria: spiky load, no capacity planning, zero-OCU minimum",
+            "Makes a recommendation tied to the product"
+          ]
+        },
+        {
+          "id": "aws.opensearch.e2",
+          "prompt": "Explain hybrid search and why a legal search product needs it.",
+          "seconds": 120,
+          "modelAnswer": "Pure vector search finds documents that mean the same thing as the query, which is great for 'communications about delaying the recall', but it is weak on exact tokens: a Bates number, a party name, a defined term in a contract. BM25 is the opposite: precise on tokens, blind to paraphrase. In legal review both failure modes are expensive, because a missed exact term is a privilege or production risk. Hybrid search runs both and fuses the results. In OpenSearch that is a hybrid query with up to five sub-queries, a BM25 match on the text field and a kNN query on the embedding, executed in one request. Because BM25 scores are unbounded and cosine scores sit between zero and one, a search pipeline with a normalization processor rescales each list, min-max or z-score, then combines them with a weighted arithmetic mean; or a score-ranker processor applies reciprocal rank fusion, which ignores raw scores and is more robust. I would expose the weight as a tunable, evaluate on a labelled set of past review queries, and keep filters such as matter and custodian as a filter clause that applies to both sub-queries.",
+          "rubric": [
+            "Explains complementary weaknesses of vector and BM25 search with a legal example",
+            "Describes the hybrid query running both sub-queries",
+            "Explains normalization and combination in a search pipeline",
+            "Mentions RRF as an alternative",
+            "Mentions evaluation or tuning on real queries and shared filters"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.opensearch.s1",
+          "situation": "A partner reports that a contract reviewer saw a document from a different matter in her search results. All matters share one OpenSearch index; the React client appends a matter filter to every query. The firm's GC wants a written explanation by tomorrow.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Enforce isolation in the engine: fine-grained access control roles with document-level security on matter_id mapped from the API's identity, keep the server-side filter as a second layer, and audit which queries lacked the filter.",
+              "verdict": "best",
+              "why": "A client-side filter is a suggestion, not a control; DLS makes the engine refuse to return other matters' documents no matter what the request says, and the audit answers the GC's actual question."
+            },
+            {
+              "text": "Create one index per matter and route each query to the right index in the API.",
+              "verdict": "ok",
+              "why": "It isolates data, but hundreds of matters mean hundreds of indices and shards, cross-matter analytics get hard, and a routing bug in the API reproduces the same incident."
+            },
+            {
+              "text": "Fix the React code so the filter is always appended and close the incident.",
+              "verdict": "bad",
+              "why": "Anyone with a token can call the API without the filter; the incident shows the control was in the wrong place, and the GC will see through a front-end-only fix."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.bedrock",
+      "title": "Bedrock and AgentCore",
+      "tease": "The agent must stay in the EU. Which inference profile prefix quietly routes it worldwide?",
+      "lesson": {
+        "body": "**Bedrock** is one API over many models (Anthropic Claude, Amazon Nova, Meta Llama, Mistral) with IAM authentication, VPC interface endpoints, CloudTrail, and a commitment that prompts are not used to train models. Since October 2025 serverless models are **enabled automatically**; Anthropic models also need a one-time use-case form, and you restrict with IAM and SCPs.\n\n**Cross-region inference.** Many models are served only through inference profiles: `eu.`, `us.` and `apac.` prefixes route within a geography at the source Region's price; `global.` routes to any commercial Region at about 10% less. For EU residency use the `eu.` profile, verify destination Regions with `GetInferenceProfile`, and allow every destination in SCPs, because one blocked Region fails the request. Batch inference is 50% off on-demand pricing.\n\n**Guardrails** are policies attached by id and version: content filters (including prompt attacks), denied topics, word filters, **sensitive information filters** that block or mask PII and regex matches, and **contextual grounding checks** that reject answers unsupported by retrieved passages. The standalone `ApplyGuardrail` API evaluates text from any model. Gotcha: blocked content appears in plain text in model invocation logs.\n\n**Knowledge Bases** are managed RAG: data sources, chunking (fixed, default about 300 tokens, hierarchical, semantic), embeddings (Titan v2, Cohere), vector stores (OpenSearch Serverless or managed, Aurora PostgreSQL, S3 Vectors, Neptune, Pinecone, MongoDB), and the `Retrieve` and `RetrieveAndGenerate` APIs.\n\n**AgentCore**, GA since 13 October 2025, hosts the agents you wrote by hand. **Runtime** runs any framework in a dedicated microVM per session, idle timeout 15 minutes and lifetime 8 hours by default, over HTTP, MCP and A2A. **Identity** handles inbound auth (IAM or OAuth JWT) and outbound credentials (OAuth 2LO and 3LO, API keys) in a token vault. **Gateway** turns Lambda functions, OpenAPI specs and existing MCP servers into MCP tools; **Memory**, **Code Interpreter**, **Browser**, **Observability**, **Policy** and **Evaluations** complete it.",
+        "snippet": "import boto3\n\nbedrock = boto3.client(\"bedrock-runtime\", region_name=\"eu-central-1\")\n\nresponse = bedrock.converse(\n    modelId=\"eu.anthropic.claude-sonnet-4-5-20250929-v1:0\",  # EU geographic profile\n    system=[{\"text\": \"You are a legal review assistant. Cite passages.\"}],\n    messages=[{\"role\": \"user\", \"content\": [{\"text\": question}]}],\n    inferenceConfig={\"maxTokens\": 1024, \"temperature\": 0},\n    guardrailConfig={\n        \"guardrailIdentifier\": GUARDRAIL_ID,\n        \"guardrailVersion\": \"2\",\n        \"trace\": \"enabled\",\n    },\n)\nprint(response[\"output\"][\"message\"][\"content\"][0][\"text\"])\nprint(response[\"usage\"], response.get(\"stopReason\"))",
+        "snippetLang": "python",
+        "source": {
+          "title": "Route model inference requests across AWS Regions with cross-Region inference - Amazon Bedrock",
+          "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html"
+        }
+      },
+      "cards": [
+        {
+          "id": "aws.bedrock.c1",
+          "type": "mc",
+          "prompt": "A German law firm requires that prompts and documents are processed only inside the EU. Which model identifier do you use?",
+          "options": [
+            "An eu. geographic inference profile, after checking its destination Regions",
+            "A global. inference profile, since it is cheaper",
+            "A us. inference profile called from eu-central-1",
+            "Any profile, because data in transit is encrypted"
+          ],
+          "answer": 0,
+          "why": "Geographic profiles route only within the geography; global profiles may process in any commercial Region, which breaks residency however encrypted the transit is. Still verify destination Regions with GetInferenceProfile rather than trusting the prefix alone."
+        },
+        {
+          "id": "aws.bedrock.c2",
+          "type": "mc",
+          "prompt": "Your RAG assistant sometimes states a clause that is not in any retrieved passage. Which Guardrails policy addresses this?",
+          "options": [
+            "Denied topics",
+            "Word filters",
+            "Contextual grounding checks",
+            "Sensitive information filters"
+          ],
+          "answer": 2,
+          "why": "Contextual grounding checks score the response for grounding in the supplied source and relevance to the query and block below a threshold. Denied topics and word filters are about subject matter and vocabulary, not factual support."
+        },
+        {
+          "id": "aws.bedrock.c3",
+          "type": "mc",
+          "prompt": "How does AgentCore Runtime isolate two reviewers using the same agent?",
+          "options": [
+            "Separate threads inside one long-running container",
+            "A dedicated microVM per session, terminated and memory-sanitized when the session ends",
+            "Separate Lambda functions per user",
+            "Separate ECS services per tenant"
+          ],
+          "answer": 1,
+          "why": "Each runtimeSessionId gets its own microVM with isolated CPU, memory and filesystem; sessions live up to 8 hours and idle out after 15 minutes by default. That is why cross-session leakage of a privileged document is structurally prevented, unlike shared-process designs."
+        },
+        {
+          "id": "aws.bedrock.c4",
+          "type": "mc",
+          "prompt": "A new AWS account wants to call Claude on Bedrock. What is required as of late 2025?",
+          "options": [
+            "Open a support case to enable each model",
+            "Nothing; serverless models are enabled automatically, but Anthropic models need a one-time use-case form, and IAM must allow the invoke action",
+            "Purchase provisioned throughput first",
+            "Enable the model in every destination Region of the inference profile"
+          ],
+          "answer": 1,
+          "why": "Since October 2025 model access is automatic for serverless models; the Anthropic use-case form is the one remaining step, and IAM or SCPs are how you restrict. Cross-region inference does not require enabling destination Regions in the account."
+        },
+        {
+          "id": "aws.bedrock.c5",
+          "type": "tf",
+          "prompt": "Global cross-region inference profiles cost about 10% less than geographic profiles but may route requests to any commercial AWS Region.",
+          "answer": true,
+          "why": "That is the exact trade AWS documents: savings versus residency. For Fortune 100 workloads without residency constraints global is a free discount; for EU legal data it is a compliance failure."
+        },
+        {
+          "id": "aws.bedrock.c6",
+          "type": "tf",
+          "prompt": "Bedrock Knowledge Bases can use Amazon S3 Vectors as its vector store.",
+          "answer": true,
+          "why": "S3 Vectors became generally available in December 2025 and is a supported, low-cost store for infrequently queried knowledge bases, with the caveat that hierarchical chunking can exceed its per-vector metadata limit."
+        },
+        {
+          "id": "aws.bedrock.c7",
+          "type": "cloze",
+          "prompt": "The standalone ___ API applies a guardrail to arbitrary text, including output from a model not hosted on Bedrock.",
+          "answer": "ApplyGuardrail",
+          "why": "ApplyGuardrail decouples policy from inference, so the same PII and grounding policies can wrap a self-hosted model or a tool result. It is billed per text unit like inline guardrails."
+        },
+        {
+          "id": "aws.bedrock.c8",
+          "type": "cloze",
+          "prompt": "AgentCore Runtime terminates an idle session after ___ minutes by default (configurable via idleRuntimeSessionTimeout).",
+          "answer": "15",
+          "why": "900 seconds idle and 28,800 seconds (8 hours) maximum lifetime are the defaults for microVM runtimes; the idle timer resets on each invocation, the lifetime timer does not."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.bedrock.e1",
+          "prompt": "You have built MCP servers and agent loops by hand. How would AgentCore change how you deploy and secure an agent for a law firm?",
+          "seconds": 120,
+          "modelAnswer": "Today my loop, my tool servers and my auth are code I host and patch. AgentCore splits that into managed pieces without forcing a framework. The loop itself keeps running as my container, but on AgentCore Runtime each user session gets its own microVM, so one reviewer's documents are never in the same process as another's, and sessions can run for hours for long document batches. Inbound auth moves to AgentCore Identity: the React app sends a Cognito JWT, Runtime validates it, and I stop writing token middleware. Outbound credentials, say the firm's document management system over OAuth, live in the Identity token vault with a three-legged consent flow instead of in environment variables. My existing MCP servers plug into Gateway, which also wraps Lambda functions and OpenAPI specs as MCP tools and enforces who may call what; Policy adds declarative rules on tool use. Memory gives me cross-session recall with retention controls, and Observability emits OpenTelemetry traces of every tool call, which is the audit trail a firm's GC wants. The cost is coupling to AWS and consumption pricing; the gain is that the dangerous parts, isolation and credentials, are no longer mine to get wrong.",
+          "rubric": [
+            "Runtime: per-session microVM isolation, long sessions, framework agnostic",
+            "Identity for inbound JWT and outbound OAuth credentials in a vault",
+            "Gateway reusing existing MCP servers and wrapping Lambda or OpenAPI",
+            "Observability or Policy as audit and control",
+            "States the trade-off (lock-in, pricing)"
+          ]
+        },
+        {
+          "id": "aws.bedrock.e2",
+          "prompt": "Using Bedrock features, explain how you would stop a contract-review agent from leaking personal data or inventing clauses.",
+          "seconds": 120,
+          "modelAnswer": "Two risks, two layers. For personal data I attach a guardrail with sensitive information filters: standard PII types such as names, emails and national IDs set to mask on output, plus custom regex for client identifiers like matter numbers in the wrong context. The same guardrail runs on input so a user cannot smuggle a prompt attack past the system prompt; the content filter's prompt-attack category covers that. For invented clauses I use retrieval augmented generation through a Knowledge Base over the contract set, so the model answers from retrieved chunks with citations, and I enable contextual grounding checks on the guardrail: the response is scored for grounding against the retrieved passages and for relevance to the question, and anything below the threshold is blocked with a message that says the answer could not be supported. Temperature zero and a system prompt that demands quotations help but are not controls. Everything runs through an EU inference profile, invocation logging goes to a locked S3 bucket with the knowledge that blocked content appears there in plain text, so that bucket is as sensitive as the documents. I would then test the guardrail with a red-team set before any partner sees it.",
+          "rubric": [
+            "Sensitive information filters with mask versus block, on input and output",
+            "Prompt attack filtering",
+            "RAG via Knowledge Base with citations",
+            "Contextual grounding checks and threshold behaviour",
+            "Notes the invocation log plaintext caveat or testing before rollout"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.bedrock.s1",
+          "situation": "A pan-European law firm's engagement letter states all processing stays within the EU. The team switched the agent to a global. inference profile last month to cut cost and avoid throttling. A client audit is scheduled in three weeks.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Move to the eu. profile now, verify destination Regions with GetInferenceProfile, add an SCP that denies Bedrock outside EU Regions, and disclose the past month's routing to the firm.",
+              "verdict": "best",
+              "why": "The global profile may have processed data in the US or APAC; fixing the routing, proving it with the SCP and CloudTrail's inferenceRegion field, and disclosing is the only position that survives an audit."
+            },
+            {
+              "text": "Switch to a single-Region model id in eu-central-1 with provisioned throughput to avoid throttling.",
+              "verdict": "ok",
+              "why": "It satisfies residency and capacity, but provisioned throughput is expensive and not every model is available in-Region on demand; the eu. profile usually achieves the same with less cost."
+            },
+            {
+              "text": "Keep the global profile and add a contract clause that AWS Regions are all equivalent under GDPR adequacy.",
+              "verdict": "bad",
+              "why": "The engagement letter says EU, not 'adequate'; unilaterally reinterpreting a client's data residency commitment to save 10% is how a consulting firm loses the account."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.architecture",
+      "title": "The Target Architecture",
+      "tease": "Your Terraform state holds the database password in plain text. Who can read that bucket today?",
+      "lesson": {
+        "body": "A browser loads the React build from **CloudFront** with an OAC-protected **S3** bucket; the `/api/*` behavior forwards to an **API Gateway HTTP API** whose JWT authorizer validates Cognito tokens. A **VPC link** reaches an internal **ALB** fronting an **ECS Fargate** service in private subnets running the container from **ECR**. The task has two identities: the **task execution role** pulls the image and reads Secrets Manager; the **task role** is what your code assumes to call S3, Bedrock and OpenSearch. **RDS PostgreSQL** Multi-AZ sits in isolated subnets with its password in Secrets Manager. **OpenSearch** runs as a VPC domain or a Serverless collection behind a VPC endpoint. Documents live in an SSE-KMS bucket. **Bedrock** is reached through a `bedrock-runtime` interface endpoint with an `eu.` inference profile; the agent loop can run on **AgentCore Runtime** with Gateway exposing tools over MCP. ECR, Secrets Manager, CloudWatch Logs and S3 gateway endpoints let private subnets work without NAT.\n\n**Terraform** provisions all of it. Current Terraform is 1.16.x under the BSL licence, with OpenTofu as the open fork. Remote state goes in S3 with `encrypt = true`, a KMS key, versioning and **`use_lockfile = true`** for native locking (since 1.10; the DynamoDB lock table is deprecated). State stores attributes in plain text, including any password you set yourself: restrict the bucket to pipeline roles, use `manage_master_user_password`, and prefer write-only arguments for secrets. Use modules per layer, one root per environment, and run plan and apply only from CodeBuild.\n\n**Delivery** is a V2 **CodePipeline**: GitHub source via CodeConnections; CodeBuild tests, builds the ARM64 image, pushes to ECR and resolves the digest; Terraform plan; manual approval; apply and ECS deploy by digest; invalidate `/index.html`. Alarm on ALB 5xx, p99 latency, RDS `ReplicaLag` and Bedrock throttles; trace via ADOT to X-Ray. Cost levers: Fargate Spot in non-prod, zero-OCU Serverless minimums, batch inference.",
+        "snippet": "Browser\n  |  HTTPS\n  v\nCloudFront (WAF, ACM cert) --default--> S3 [React build, OAC]\n  |  /api/*\n  v\nAPI Gateway HTTP API (JWT authorizer <- Cognito)\n  |  VPC link\n  v\ninternal ALB --> ECS Fargate service (image: ECR @sha256)\n                   | task role\n     +-------------+-------------+----------------+\n     v             v             v                v\n  RDS Postgres   OpenSearch    S3 documents    Bedrock (eu. profile)\n  Multi-AZ       (VPC/Serverless) SSE-KMS      via PrivateLink\n  + Secrets Mgr                                 + Guardrails / KB\n\nProvisioned by Terraform (state: S3 + use_lockfile + KMS)\nShipped by CodePipeline V2: GitHub -> CodeBuild -> approve -> deploy",
+        "snippetLang": "text",
+        "source": {
+          "title": "Backend Type: s3 - Terraform",
+          "url": "https://developer.hashicorp.com/terraform/language/backend/s3"
+        }
+      },
+      "cards": [
+        {
+          "id": "aws.architecture.c1",
+          "type": "mc",
+          "prompt": "Your container code calls bedrock:InvokeModel and gets AccessDenied. Which role needs the permission?",
+          "options": [
+            "The ECS task execution role",
+            "The ECS task role",
+            "The ALB's service-linked role",
+            "The CodeBuild service role"
+          ],
+          "answer": 1,
+          "why": "Application code assumes the task role; the execution role is only used by the ECS agent to pull from ECR, read secrets and write logs. Granting Bedrock to the execution role is a common mistake that also widens the pull path's privileges."
+        },
+        {
+          "id": "aws.architecture.c2",
+          "type": "mc",
+          "prompt": "How should Terraform state be locked for the S3 backend today?",
+          "options": [
+            "use_lockfile = true for S3-native locking",
+            "A DynamoDB table with a LockID partition key",
+            "No locking; CodeBuild serializes runs",
+            "A Consul backend"
+          ],
+          "answer": 0,
+          "why": "Native S3 locking via a .tflock object arrived in Terraform 1.10 and DynamoDB locking is deprecated for removal. Relying on the pipeline to serialize ignores engineers running plan locally against the same state."
+        },
+        {
+          "id": "aws.architecture.c3",
+          "type": "mc",
+          "prompt": "You set the RDS master password as a Terraform variable from a .tfvars file. Where does the secret end up?",
+          "options": [
+            "Only in the tfvars file",
+            "In the state file in plain text, readable by anyone with access to the state bucket",
+            "Nowhere; Terraform hashes sensitive values",
+            "In CloudTrail"
+          ],
+          "answer": 1,
+          "why": "Marking a value sensitive only redacts CLI output; state stores it verbatim. Use manage_master_user_password so RDS generates it into Secrets Manager, or ephemeral resources and write-only arguments, and lock the state bucket down."
+        },
+        {
+          "id": "aws.architecture.c4",
+          "type": "mc",
+          "prompt": "Which request path keeps the ECS tasks without public IPs and off the internet?",
+          "options": [
+            "CloudFront to a public ALB in public subnets",
+            "CloudFront to API Gateway HTTP API, VPC link to an internal ALB, Fargate tasks in private subnets with VPC endpoints for ECR, S3, Secrets Manager and Bedrock",
+            "CloudFront directly to Fargate task IPs",
+            "API Gateway Lambda proxy to tasks over the internet"
+          ],
+          "answer": 1,
+          "why": "The VPC link is the private bridge from the gateway into the VPC; interface and gateway endpoints replace the NAT gateway for AWS APIs. A public ALB works but exposes a second entry point that bypasses the gateway's authorizer."
+        },
+        {
+          "id": "aws.architecture.c5",
+          "type": "tf",
+          "prompt": "Fargate tasks in private subnets can pull images from ECR without a NAT gateway if you add ECR api and dkr interface endpoints plus an S3 gateway endpoint.",
+          "answer": true,
+          "why": "ECR stores layers in S3, so the S3 gateway endpoint is the piece people forget; without it pulls hang. Add CloudWatch Logs and Secrets Manager endpoints too, or the task fails before your code runs."
+        },
+        {
+          "id": "aws.architecture.c6",
+          "type": "tf",
+          "prompt": "DynamoDB-based state locking is still the recommended default for Terraform's S3 backend.",
+          "answer": false,
+          "why": "It is deprecated; use_lockfile is the recommended path and both can be set during migration. Many tutorials and modules still create the table, which is how outdated patterns end up in new repos."
+        },
+        {
+          "id": "aws.architecture.c7",
+          "type": "cloze",
+          "prompt": "Terraform 1.10 introduced S3-native state locking through the ___ backend argument.",
+          "answer": "use_lockfile",
+          "why": "It writes a .tflock object next to the state, so the role needs GetObject, PutObject and DeleteObject on that key. Missing DeleteObject leaves stale locks that look like a crashed colleague."
+        },
+        {
+          "id": "aws.architecture.c8",
+          "type": "cloze",
+          "prompt": "To call Bedrock from private subnets without internet access, create a VPC ___ endpoint (PrivateLink) for bedrock-runtime.",
+          "answer": "interface",
+          "why": "Interface endpoints are ENIs with private IPs for AWS APIs; only S3 and DynamoDB use gateway endpoints. An endpoint policy can also pin which models and inference profiles the VPC may invoke."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.architecture.e1",
+          "prompt": "Draw the request path for 'summarize this deposition' end to end, and name every IAM identity involved.",
+          "seconds": 150,
+          "modelAnswer": "The reviewer clicks summarize in React. The browser holds a Cognito access token, obtained through the hosted UI; CloudFront serves the app from S3 using its origin access control, which is the first identity, the CloudFront service principal allowed by the bucket policy. The POST to /api/matters/42/summaries goes through CloudFront's /api behavior to the HTTP API, whose JWT authorizer validates the token with no identity of its own. API Gateway invokes the VPC link to the internal ALB and the Fargate task. Here two roles matter: the task execution role pulled the image from ECR and injected the database secret, and the task role is what the code now uses. With the task role the service checks matter membership in Postgres over a connection authenticated with the Secrets Manager password, fetches the deposition from the documents bucket, which also needs kms:Decrypt on the client key, retrieves chunks from OpenSearch where a fine-grained access control role mapped to the task role filters by matter, and calls bedrock:InvokeModel through the interface endpoint using the eu. inference profile with a guardrail. The summary is written back to Postgres and the audit event to the locked audit bucket. Everything is logged to CloudTrail under the task role, which is the trail the firm's GC can follow.",
+          "rubric": [
+            "CloudFront OAC principal and S3 bucket policy",
+            "Cognito token validated by the JWT authorizer, VPC link to internal ALB",
+            "Distinguishes task execution role from task role",
+            "Task role permissions for S3 plus KMS, OpenSearch via FGAC mapping, Bedrock via endpoint",
+            "Secrets Manager for the database credential",
+            "Audit trail via CloudTrail or audit bucket"
+          ]
+        },
+        {
+          "id": "aws.architecture.e2",
+          "prompt": "What does 'production-ready' mean for this stack? Give me your checklist.",
+          "seconds": 150,
+          "modelAnswer": "Six headings. Identity and secrets: Cognito in front, least-privilege task role, RDS password managed by Secrets Manager, no secret in Terraform state, SCP restricting Regions. Network: private subnets, VPC endpoints instead of NAT where possible, WAF on CloudFront, security groups that only allow ALB to tasks and tasks to the database. Data: SSE-KMS with customer keys, versioning, Object Lock on audit logs, Multi-AZ Postgres with 35-day backups and a tested point-in-time restore, OpenSearch fine-grained access control with document-level security. Delivery: everything in Terraform with remote locked state, a V2 pipeline with plan, approval and apply, images pinned by digest and scanned with Inspector, rollback via task definition revisions. Operations: structured logs, traces, alarms on 5xx, latency, replica lag and Bedrock throttling, a runbook for failover, and a cost budget with alerts. Finally the AI-specific items: EU inference profile, guardrails for PII and grounding, evaluation set for answer quality, and limits on agent tool use. If I had to pick the three that distinguish a demo from production, they are tested restores, enforced isolation at the data layer, and a pipeline nobody can bypass.",
+          "rubric": [
+            "Identity and secrets management, least privilege",
+            "Network isolation (private subnets, endpoints, WAF, security groups)",
+            "Data protection and recovery (KMS, Multi-AZ, backups tested, Object Lock, FGAC)",
+            "Infrastructure as code and pipeline with approval, digest pinning and scanning",
+            "Observability, alarms and runbooks, cost controls",
+            "AI-specific controls (residency, guardrails, evaluation)"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.architecture.s1",
+          "situation": "The team keeps Terraform state in a shared S3 bucket readable by the whole engineering group and runs terraform apply from laptops with admin credentials. A junior engineer, following a 2022 blog post, proposes adding a DynamoDB lock table to 'make it safe'.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Switch to use_lockfile, restrict the state bucket to the pipeline's plan and apply roles with KMS and versioning, move RDS to manage_master_user_password so state holds no password, and make CodeBuild the only place apply runs.",
+              "verdict": "best",
+              "why": "Locking was never the real risk; the plaintext password in a widely readable bucket and unaudited laptop applies were. Native locking is the current recommendation and the pipeline gives the audit trail the client will ask for."
+            },
+            {
+              "text": "Add the DynamoDB lock table as proposed, but also restrict the bucket policy and enable versioning.",
+              "verdict": "ok",
+              "why": "Tightening the bucket is the important part; the DynamoDB table works but is deprecated, and laptop applies with admin credentials remain an unaudited path."
+            },
+            {
+              "text": "Add the lock table and move on; the bucket is internal so readability is fine.",
+              "verdict": "bad",
+              "why": "Internal is not a security boundary for a database password; any engineer, or any compromised laptop, can read production credentials out of state."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "boss": {
+    "questions": [
+      {
+        "id": "aws.boss.1",
+        "prompt": "A prototype works in a demo: React app, a Python service calling Bedrock, documents in a bucket. The partner wants it in front of a law firm in six weeks. What do you do to make it production-ready?",
+        "seconds": 180,
+        "modelOutline": "Open with the three things that separate demo from production: enforced isolation at the data layer, recoverability, and a pipeline nobody bypasses. Then walk the stack. Identity: Cognito plus JWT authorizer, matter-level authorization in the service, least-privilege task role, secrets in Secrets Manager, nothing in state. Network: private subnets, VPC link to internal ALB, endpoints, WAF. Data: SSE-KMS with customer keys, versioning, Object Lock for audit, Multi-AZ Postgres with tested PITR, OpenSearch FGAC with document-level security. Delivery: Terraform with locked remote state, V2 pipeline with plan, approval and apply, digest-pinned scanned images, rollback. Operations: logs, traces, alarms, runbooks, cost budget. AI: EU inference profile, guardrails for PII and grounding, an evaluation set, tool-use limits. Close with sequencing for six weeks and what you would cut.",
+        "rubric": [
+          "States a clear definition of production-ready, not a feature list",
+          "Authentication and matter-level authorization with least-privilege roles",
+          "Data protection: KMS, versioning, Object Lock, Multi-AZ and tested restore",
+          "Isolation enforced in the engine (FGAC/DLS or equivalent), not only in the UI",
+          "Infrastructure as code and a gated pipeline with digest pinning and scanning",
+          "Observability, alarms and runbooks",
+          "AI controls: residency profile, guardrails, evaluation",
+          "Prioritizes for the six-week deadline and names trade-offs"
+        ]
+      },
+      {
+        "id": "aws.boss.2",
+        "prompt": "Whiteboard the deployment for this app using the services we named: React, API Gateway, ECS, ECR, RDS Postgres, OpenSearch, S3, Bedrock, Terraform and CodePipeline. Talk me through the diagram.",
+        "seconds": 180,
+        "modelOutline": "Draw left to right. Browser to CloudFront with WAF; default behavior to a private S3 bucket via OAC, /api/* to an HTTP API with a Cognito JWT authorizer. VPC link to an internal ALB and an ECS Fargate service in private subnets pulling a digest-pinned image from ECR; execution role versus task role. Data tier: RDS Postgres Multi-AZ in isolated subnets with Secrets Manager and RDS Proxy; OpenSearch Serverless collection or VPC domain with fine-grained access control; documents bucket with SSE-KMS; audit bucket with Object Lock. Bedrock through a PrivateLink endpoint with an eu. inference profile, guardrails and a Knowledge Base; AgentCore Runtime and Gateway for the agent loop and tools. Underneath: Terraform modules per layer with S3 state and use_lockfile; a V2 CodePipeline from GitHub via CodeConnections through CodeBuild, plan, approval, apply, ECS deploy and CloudFront invalidation. Name what talks to what and over which identity.",
+        "rubric": [
+          "Edge: CloudFront with OAC-protected S3 and a separate /api behavior",
+          "API Gateway HTTP API with JWT authorizer and VPC link to an internal ALB",
+          "ECS Fargate in private subnets with ECR digest pinning and the two roles explained",
+          "RDS Multi-AZ with Secrets Manager; OpenSearch with FGAC; S3 with KMS and Object Lock",
+          "Bedrock via private endpoint with EU inference profile and guardrails",
+          "Terraform state and locking, module structure",
+          "CodePipeline V2 stages including approval and deploy",
+          "Explains data flow and identities, not just boxes"
+        ]
+      },
+      {
+        "id": "aws.boss.3",
+        "prompt": "The client's CISO asks: where does privileged data flow, where is it stored at rest, and who can read it at each point? Answer for every service in the stack.",
+        "seconds": 180,
+        "modelOutline": "Go hop by hop. Browser to CloudFront: TLS, WAF, no document content cached because /api is CachingDisabled. API Gateway: validates JWT, logs metadata not bodies. ECS task: in memory only, task role is the only reader of downstream stores. S3 documents: SSE-KMS customer key, key policy and bucket policy list the task role and a break-glass role, CloudTrail data events record every GetObject. RDS: encrypted volume, password in Secrets Manager rotated weekly, access from the task security group only. OpenSearch: encrypted at rest and in transit, FGAC roles with document-level security per matter. Bedrock: no training on prompts, eu. inference profile, invocation logs in a locked bucket and the plaintext caveat. Audit bucket: Object Lock compliance mode. Terraform state: KMS, restricted to pipeline roles, no secrets. People: SSO roles, no long-lived keys, SCP restricting Regions. Close with how you would prove it: Access Analyzer, CloudTrail queries, a quarterly restore test.",
+        "rubric": [
+          "Covers in-transit protection at edge and gateway and what is logged",
+          "S3 documents: KMS key policy as reader list, CloudTrail data events",
+          "RDS encryption, Secrets Manager rotation, network restriction",
+          "OpenSearch FGAC with document-level security",
+          "Bedrock residency, no-training commitment, invocation log sensitivity",
+          "Audit and state storage protections (Object Lock, restricted state bucket)",
+          "Human access model (SSO roles, SCPs, break-glass)",
+          "Offers evidence or verification methods"
+        ]
+      }
+    ]
+  }
+}

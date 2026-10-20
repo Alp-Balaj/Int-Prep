@@ -1,0 +1,1121 @@
+{
+  "tier": {
+    "id": "aws",
+    "name": "AWS and Terraform",
+    "level": 1,
+    "tease": "Plan: 1 to destroy. It was the client's database. How IaC bites, and how seniors stop it."
+  },
+  "nodes": [
+    {
+      "id": "aws.tf-core",
+      "title": "Terraform Core and HCL",
+      "tease": "Why `terraform apply` can destroy a database you only meant to rename.",
+      "lesson": {
+        "body": "Terraform is a declarative reconciler: you describe the desired graph of resources in **HCL**, Terraform compares it with its **state** file and the real cloud, and computes a plan of create, update, replace and destroy actions. Think of state as EF Core's `ModelSnapshot`: without it, Terraform cannot tell a rename from a drop-and-create.\n\nA root module is just a folder of `.tf` files. `terraform { required_providers {} }` pins providers (the AWS provider is at major version 6; pin with `~> 6.0`). `terraform init` downloads them and writes `.terraform.lock.hcl`, which you commit like any lockfile. A `provider \"aws\" {}` block is the configured client, like an `HttpClient` registered in DI. `resource` blocks declare managed objects, `data` blocks are read-only lookups evaluated at plan time (an existing VPC, the current account id), `variable` blocks are typed inputs with optional `validation`, and `output` blocks are the module's public surface.\n\nDependencies are implicit: referencing `aws_ecr_repository.app.repository_url` inside a task definition makes Terraform create the repository first. Use `depends_on` only for hidden dependencies, such as an IAM policy attachment that must exist before a service starts.\n\n`terraform plan` is read-only and shows the diff; `terraform apply` executes it after a confirmation prompt. In pipelines use `plan -out=tfplan` then `apply tfplan`, so what reviewers saw is exactly what runs. Watch for `-/+` and the words **forces replacement**: changing an immutable attribute (an RDS identifier, a subnet CIDR) means destroy, then create. `lifecycle { prevent_destroy = true }` makes that plan fail instead.\n\nVariable precedence (last wins): `TF_VAR_*` environment variables, `terraform.tfvars`, `*.auto.tfvars`, then `-var` and `-var-file` flags. Prefer `for_each` over `count`: deleting the first of three `count` items shifts indexes and replaces the other two; `for_each` keys are stable.",
+        "snippet": "terraform {\n  required_version = \">= 1.11\"\n  required_providers {\n    aws = { source = \"hashicorp/aws\", version = \"~> 6.0\" }\n  }\n}\nprovider \"aws\" { region = var.region }\n\nvariable \"environment\" {\n  type = string\n  validation {\n    condition     = contains([\"dev\", \"staging\", \"prod\"], var.environment)\n    error_message = \"environment must be dev, staging or prod\"\n  }\n}\n\ndata \"aws_caller_identity\" \"me\" {}            # read-only lookup\n\nresource \"aws_ecr_repository\" \"app\" {\n  name = \"ediscovery-agent-${var.environment}\"\n  lifecycle { prevent_destroy = true }        # plan fails instead of destroying\n}\noutput \"repo_url\" { value = aws_ecr_repository.app.repository_url }",
+        "snippetLang": "hcl",
+        "source": { "title": "Terraform language documentation", "url": "https://developer.hashicorp.com/terraform/language" }
+      },
+      "cards": [
+        {
+          "id": "aws.tf-core.c1",
+          "type": "mc",
+          "prompt": "What does `terraform plan` actually compare to produce its diff?",
+          "options": [
+            "Configuration against the state file only",
+            "Configuration against state, after refreshing state from the real infrastructure",
+            "Configuration against the previous saved plan file",
+            "The state file against the real infrastructure only"
+          ],
+          "answer": 1,
+          "why": "Plan first refreshes each managed resource through the provider API, then diffs config against that refreshed state, which is why it can surface drift. 'Config vs state only' is what people assume and is why they are surprised when a console edit shows up in the plan."
+        },
+        {
+          "id": "aws.tf-core.c2",
+          "type": "mc",
+          "prompt": "A plan line reads `-/+ resource \"aws_db_instance\" \"main\" (forces replacement)`. What will apply do?",
+          "options": [
+            "Update the instance in place with a brief reboot",
+            "Destroy the existing instance and create a new one",
+            "Create the new instance first, then delete the old one, preserving data",
+            "Fail, because replacements require `-replace` on the command line"
+          ],
+          "answer": 1,
+          "why": "An immutable argument changed, so the provider can only destroy and recreate; for a database that is data loss unless you have a snapshot. Create-before-destroy only happens if you set `lifecycle { create_before_destroy = true }`, and even then the new instance is empty."
+        },
+        {
+          "id": "aws.tf-core.c3",
+          "type": "mc",
+          "prompt": "`TF_VAR_region=eu-west-1` is set, `terraform.tfvars` has `region = \"eu-central-1\"`, and you run `terraform plan -var region=us-east-1`. Which region wins?",
+          "options": [
+            "us-east-1, because command-line flags are applied last",
+            "eu-central-1, because tfvars files override environment and flags",
+            "eu-west-1, because environment variables have the highest precedence",
+            "Terraform errors on conflicting values"
+          ],
+          "answer": 0,
+          "why": "Precedence is env vars, then terraform.tfvars, then *.auto.tfvars, then -var/-var-file in command-line order, with the last source winning. Candidates often assume env vars win because that is how many .NET config stacks behave."
+        },
+        {
+          "id": "aws.tf-core.c4",
+          "type": "tf",
+          "prompt": "`.terraform.lock.hcl` is a local cache artifact and should be added to .gitignore.",
+          "answer": false,
+          "why": "It is the dependency lock file recording exact provider versions and hashes, and HashiCorp says to commit it so CI uses the same provider builds. The `.terraform/` directory is the cache to ignore."
+        },
+        {
+          "id": "aws.tf-core.c5",
+          "type": "cloze",
+          "prompt": "A `___` block reads an existing object such as the current account id or a pre-existing VPC without managing it.",
+          "answer": "data",
+          "why": "Data sources are evaluated during plan and produce attributes you can reference, but Terraform never creates, changes or destroys what they describe. They are the read-only query in an otherwise declarative world."
+        },
+        {
+          "id": "aws.tf-core.c6",
+          "type": "tf",
+          "prompt": "With `count = 3`, removing the first element from the list that feeds the resources will cause Terraform to replace the remaining two.",
+          "answer": true,
+          "why": "Count instances are addressed by index, so element 1 becomes element 0 and the plan sees a changed identity. `for_each` over a map or set keys by stable string, which is why it is preferred for collections that change."
+        },
+        {
+          "id": "aws.tf-core.c7",
+          "type": "cloze",
+          "prompt": "Running `terraform apply tfplan` with a plan saved by `-out` executes without a ___ prompt, and fails if state has changed since the plan.",
+          "answer": "confirmation",
+          "why": "A saved plan is a contract: apply runs exactly those actions with no interactive yes/no, so pipelines use it instead of `-auto-approve`. If the state serial moved on, Terraform rejects the stale plan rather than applying surprises."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.tf-core.e1",
+          "prompt": "You have not shipped Terraform in production before. Explain to me what Terraform state is, why it exists, and what goes wrong without it.",
+          "seconds": 120,
+          "modelAnswer": "State is Terraform's record of the resources it manages: for every resource address in my config, the real-world id and the last known attributes. It exists because the config alone cannot tell Terraform what already exists or which real object corresponds to which block. Without it, renaming `aws_ecs_service.app` to `aws_ecs_service.agent` looks like delete one, create another; with state and a `moved` block it is a no-op. It is the same job EF Core's model snapshot does for migrations: the diff is config versus snapshot, then reconciled against reality. Plan works in three steps: refresh real attributes into memory, diff against config, print actions. State also carries dependency metadata so destroy happens in the right order, and it caches outputs. The costs: it contains every attribute in plaintext, including passwords, so it has to live in a locked, versioned, access-controlled S3 bucket, never in git; and if two people apply at once without a lock it corrupts. In my ERP world the closest analogy is the migrations history table: lose it and the tool can no longer reason about what it already did.",
+          "rubric": [
+            "Defines state as the mapping from config addresses to real resource ids and attributes",
+            "Explains why config alone is insufficient (rename vs destroy/create)",
+            "Describes plan as refresh, diff, actions",
+            "Mentions plaintext secrets and the need for remote, locked, versioned storage",
+            "Gives one concrete analogy or example"
+          ]
+        },
+        {
+          "id": "aws.tf-core.e2",
+          "prompt": "Walk me through what happens between editing a `.tf` file and the infrastructure changing. Where can it go wrong?",
+          "seconds": 120,
+          "modelAnswer": "Four stages. `terraform init` resolves providers and modules from `required_providers`, writes `.terraform.lock.hcl` and configures the backend; if the lock file is committed, CI gets the same provider build I did. `terraform validate` type-checks without credentials. `terraform plan` acquires the state lock, refreshes every managed resource through the provider API, diffs config against that, and prints create, update in place, replace or destroy actions. Replace is where it goes wrong: an argument the provider marks as immutable, like an RDS identifier or a subnet CIDR, shows as `-/+` with forces replacement; for a database that is data loss. I save the plan with `-out` so apply executes exactly what was reviewed. `terraform apply tfplan` walks the dependency graph in parallel, ten operations at a time by default, writes state after each resource, and releases the lock. Failure modes: a stale plan when state changed in between, which fails safe; provider eventual consistency, which shows as a transient error; and a partial apply, where half the resources exist and state already records them, which is fine because the next plan simply continues. `prevent_destroy` on stateful resources turns the dangerous case into a hard error.",
+          "rubric": [
+            "Names init, validate, plan, apply and what each does",
+            "Explains the lock file and provider pinning",
+            "Identifies forces replacement as the dangerous diff",
+            "Explains saved plan and stale-plan protection",
+            "Mentions at least one mitigation such as prevent_destroy or create_before_destroy"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.tf-core.s1",
+          "situation": "A junior on your team renamed the RDS instance identifier from `ediscovery-db` to `ediscovery-db-prod` to match a naming standard, two days before a law-firm client's go-live. The PR plan shows `Plan: 1 to add, 0 to change, 1 to destroy` with `forces replacement` on `aws_db_instance.main`. The pipeline is green and the partner is asking why the merge is blocked.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Block the merge, explain that this plan destroys the production database, and either revert the identifier change or defer it to a planned window with a snapshot and `prevent_destroy` added to the resource.",
+              "verdict": "best",
+              "why": "The plan is a destroy-and-create of a stateful resource; a green pipeline only means the plan compiled. Adding `prevent_destroy` turns this class of mistake into a hard error for the future, and the naming change can wait."
+            },
+            {
+              "text": "Take a manual RDS snapshot, merge, and restore from the snapshot into the new instance afterwards.",
+              "verdict": "ok",
+              "why": "It avoids permanent data loss but still means downtime, a restore, and new endpoint and credentials two days before go-live; the risk is not worth a cosmetic rename."
+            },
+            {
+              "text": "Merge and apply with `-auto-approve` since the pipeline validated the change, and tell the partner it is handled.",
+              "verdict": "bad",
+              "why": "Validation checks syntax and types, not intent. This destroys the client's database and the partner was told it was fine."
+            },
+            {
+              "text": "Run `terraform apply -target=aws_ecs_service.app` to ship everything except the database change.",
+              "verdict": "bad",
+              "why": "`-target` leaves state and config inconsistent and the destructive diff waits for the next engineer who runs an untargeted apply. It is for recovery, not for routing around a bad plan."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.tf-state",
+      "title": "Remote State and Secrets",
+      "tease": "Your DB password is sitting in plaintext in a JSON file in S3. Who can read it?",
+      "lesson": {
+        "body": "Terraform state is a JSON document holding every attribute of every managed resource, in plaintext. That includes values you never see in CLI output: an RDS `master_password`, a `random_password` result, an IAM access key secret. Marking a variable `sensitive = true` only redacts CLI and plan output; the value is still in state and in saved plan files. Anyone with `s3:GetObject` on the state object reads them. Bucket encryption (`encrypt = true`, optional `kms_key_id`) protects the disk, not the reader.\n\nThe standard backend for AWS is S3. Since Terraform 1.10 (GA in 1.11, February 2025) the S3 backend locks natively: `use_lockfile = true` writes `<key>.tflock` next to the state using S3 conditional writes, so two pipelines cannot apply at once. The older `dynamodb_table` lock (a table with a `LockID` string partition key) is deprecated and slated for removal in a future minor version; you may set both during migration. Turn on bucket versioning so a corrupted or wrongly pushed state can be rolled back, block public access, and keep the bucket in a separate security account if you can.\n\nKeep secrets out of state entirely with ephemeral values: `ephemeral` resources (1.10) are read at runtime and never persisted, and write-only arguments (1.11), named with a `_wo` suffix such as `aws_db_instance.password_wo`, are sent to the provider once and discarded; bump `password_wo_version` to resend. For RDS, `manage_master_user_password = true` lets Secrets Manager own the password so Terraform never sees it.\n\nTwo gotchas interviewers like: `terraform_remote_state` requires read access to the entire remote state file, not just its outputs, so prefer SSM parameters or data sources for cross-stack wiring; and `terraform output -json` prints sensitive values in clear.",
+        "snippet": "terraform {\n  backend \"s3\" {\n    bucket       = \"isa-tfstate-prod-eu-central-1\"\n    key          = \"ediscovery-agent/terraform.tfstate\"\n    region       = \"eu-central-1\"\n    encrypt      = true\n    kms_key_id   = \"alias/tfstate\"\n    use_lockfile = true   # S3-native lock, writes <key>.tflock\n  }\n}\n\n# Read a secret at run time; never written to state or plan\nephemeral \"aws_secretsmanager_secret_version\" \"db\" {\n  secret_id = aws_secretsmanager_secret.db.id\n}\n\nresource \"aws_db_instance\" \"main\" {\n  # ...\n  password_wo         = ephemeral.aws_secretsmanager_secret_version.db.secret_string\n  password_wo_version = 1   # bump to resend the write-only value\n}",
+        "snippetLang": "hcl",
+        "source": { "title": "Backend Type: s3", "url": "https://developer.hashicorp.com/terraform/language/backend/s3" }
+      },
+      "cards": [
+        {
+          "id": "aws.tf-state.c1",
+          "type": "mc",
+          "prompt": "You mark `variable \"db_password\" { sensitive = true }`. Where is the value hidden?",
+          "options": [
+            "From state and plan files",
+            "From CLI and plan output only; it is still stored in state and plan files",
+            "From CloudTrail and CloudWatch logs",
+            "From state only; plan output still shows it"
+          ],
+          "answer": 1,
+          "why": "`sensitive` is a display redaction: the CLI prints `(sensitive value)` but the plaintext is in the state JSON and any saved plan. Keeping it out of state requires ephemeral values or write-only arguments."
+        },
+        {
+          "id": "aws.tf-state.c2",
+          "type": "mc",
+          "prompt": "Which S3 backend argument enables Terraform's native S3 state locking?",
+          "options": [
+            "`use_lockfile = true`",
+            "`dynamodb_table = \"terraform-locks\"`",
+            "`lock = true`",
+            "`s3_locking = \"conditional\"`"
+          ],
+          "answer": 0,
+          "why": "`use_lockfile` (opt-in since 1.10, GA in 1.11) writes a `.tflock` object with a conditional write. `dynamodb_table` still works but is deprecated and will be removed in a future minor version."
+        },
+        {
+          "id": "aws.tf-state.c3",
+          "type": "mc",
+          "prompt": "Your app stack uses `data \"terraform_remote_state\"` to read the VPC id from the network stack's state. What permission does the app pipeline role actually need?",
+          "options": [
+            "Read access to the network stack's outputs only",
+            "`s3:GetObject` on the entire network state file, so it can read every attribute in it, including secrets",
+            "No S3 permission; outputs are published to SSM automatically",
+            "`s3:ListBucket` on the state bucket only"
+          ],
+          "answer": 1,
+          "why": "Remote state reads the whole file and exposes its root outputs; there is no outputs-only API for the S3 backend. That is why teams publish cross-stack values to SSM Parameter Store or use provider data sources instead."
+        },
+        {
+          "id": "aws.tf-state.c4",
+          "type": "tf",
+          "prompt": "In current Terraform, a DynamoDB table is the recommended way to lock S3 state.",
+          "answer": false,
+          "why": "DynamoDB locking is deprecated in the S3 backend docs since native locking went GA in 1.11. New projects should set `use_lockfile = true` and skip the table; existing ones can run both while migrating."
+        },
+        {
+          "id": "aws.tf-state.c5",
+          "type": "cloze",
+          "prompt": "With native S3 locking, Terraform writes a lock object at the state key plus the suffix `.___`.",
+          "answer": "tflock",
+          "why": "The role running Terraform needs `s3:GetObject`, `s3:PutObject` and `s3:DeleteObject` on that `.tflock` object too, which is a common cause of a sudden AccessDenied after enabling the feature."
+        },
+        {
+          "id": "aws.tf-state.c6",
+          "type": "cloze",
+          "prompt": "Write-only resource arguments introduced in Terraform 1.11 carry the suffix `___` and are never stored in state or plan files.",
+          "answer": "_wo",
+          "why": "Because the value is never stored, Terraform cannot detect changes to it; the paired `_wo_version` argument is how you tell it to resend. A plain `password` argument lands in state in clear."
+        },
+        {
+          "id": "aws.tf-state.c7",
+          "type": "tf",
+          "prompt": "Enabling SSE-KMS on the state bucket means developers with `s3:GetObject` on the state file can no longer read the secrets inside it.",
+          "answer": false,
+          "why": "Server-side encryption is transparent to any principal allowed to read the object and use the key. Protecting state readers is an IAM and bucket-policy problem; encryption only protects against disk and backup exposure."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.tf-state.e1",
+          "prompt": "How do you set up Terraform state for a new client engagement on AWS, and what do you do about secrets ending up in it?",
+          "seconds": 120,
+          "modelAnswer": "An S3 bucket per environment or in a dedicated security account, versioning on, public access blocked, SSE-KMS with a dedicated key, and a bucket policy that limits access to the pipeline roles plus a break-glass admin. Backend block with `encrypt = true`, `kms_key_id`, and `use_lockfile = true`, which has been the native S3 lock since Terraform 1.11; I would not create a DynamoDB table today because that path is deprecated. Separate state keys per environment and per component so a lock on the network stack does not block an app deploy. On secrets: I assume state will hold everything the provider returns, so I design them out. Database passwords via `manage_master_user_password` so Secrets Manager owns them, or write-only `password_wo` arguments fed from an ephemeral Secrets Manager read, which never persist. `sensitive = true` only hides values in output, so I treat the bucket as a secret store anyway: S3 data events on it in CloudTrail, no developer read access, and `terraform_remote_state` avoided because it needs the whole file. Finally I document recovery: restore a previous object version if a bad state is pushed, and `force-unlock` only with the lock id and a second pair of eyes.",
+          "rubric": [
+            "Bucket hardening: versioning, block public access, SSE-KMS, restrictive bucket policy",
+            "Uses `use_lockfile` and knows DynamoDB locking is deprecated",
+            "Separate state per environment and component",
+            "Keeps secrets out of state with write-only/ephemeral or service-managed passwords",
+            "Knows `sensitive` only redacts output",
+            "Mentions auditing or recovery of state access"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.tf-state.s1",
+          "situation": "A law-firm client's security questionnaire asks where infrastructure credentials are stored. While answering, you discover the RDS master password and an API key for the document-OCR vendor are in Terraform state, in a bucket every developer on the project can read. The questionnaire is due Friday and the partner wants a clean answer.",
+          "question": "What do you do first?",
+          "options": [
+            {
+              "text": "Treat it as an exposure: rotate both secrets, move the password to `manage_master_user_password` or a write-only argument and the API key to Secrets Manager, restrict the bucket to pipeline roles, enable S3 data events on it, then answer the questionnaire truthfully with the remediation dated.",
+              "verdict": "best",
+              "why": "Anything readable by every developer must be assumed read, so rotation comes first. Fixing the design means the next state push no longer contains secrets, and an honest dated answer is what a Fortune 100 or law-firm security team actually trusts."
+            },
+            {
+              "text": "Restrict the bucket policy to the pipeline roles and rotate the two secrets, leaving the Terraform config as is.",
+              "verdict": "ok",
+              "why": "It closes the current hole, but the next apply writes the new password back into state; you have bought time, not fixed the design."
+            },
+            {
+              "text": "Enable SSE-KMS on the state bucket and answer that all credentials are encrypted at rest.",
+              "verdict": "bad",
+              "why": "True and misleading. Everyone who could read the file before can still read it; encryption at rest does not restrict readers, and the questionnaire answer would not survive an audit."
+            },
+            {
+              "text": "Move state to local files that are git-ignored on the lead engineer's laptop until the questionnaire is done.",
+              "verdict": "bad",
+              "why": "Local state has no locking, no versioning and no audit trail, and a laptop is a worse place for a client's database password than a restricted bucket."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.tf-modules",
+      "title": "Writing a Reusable Module",
+      "tease": "One module, three environments, zero copy-paste: ECR + ECS + logs in 60 lines.",
+      "lesson": {
+        "body": "A Terraform module is a folder of `.tf` files with a contract: `variables.tf` for inputs, `outputs.tf` for what it exposes, `main.tf` for resources. The root module calls it with a `module` block whose `source` is a local path, a git URL, or a registry address such as `terraform-aws-modules/vpc/aws`; `version` constraints work only for registry sources. Think NuGet package with constructor parameters: callers see inputs and outputs, never the internals.\n\nA reusable module must not contain `provider` blocks; it declares `required_providers` and inherits or receives providers from the root (`providers = { aws = aws.eu }`). It should also avoid hard-coding names and environments: take `name`, `environment` and `tags` as inputs.\n\nFor a containerised agent service, a sensible module creates: an `aws_ecr_repository` with `image_tag_mutability = \"IMMUTABLE\"` and `scan_on_push = true`, plus an `aws_ecr_lifecycle_policy` keeping the last N images; an `aws_cloudwatch_log_group` with `retention_in_days` (the default is never expire, which quietly inflates the bill) and optional `kms_key_id`; an `aws_ecs_task_definition` with `requires_compatibilities = [\"FARGATE\"]`, `network_mode = \"awsvpc\"`, `cpu` and `memory` as strings, `execution_role_arn`, `task_role_arn` and `container_definitions = jsonencode([...])` wiring the `awslogs` driver to the log group; and an `aws_ecs_service` with `launch_type = \"FARGATE\"`, `desired_count`, `network_configuration`, an optional `load_balancer` block and `deployment_circuit_breaker { enable = true  rollback = true }` so a bad image rolls back instead of flapping.\n\nOutputs: `repository_url` (the pipeline pushes to it), `service_name`, `log_group_name`, the task definition ARN. Keep the IAM roles outside the module or let the caller inject them; a module that creates roles with `Resource = \"*\"` is how least privilege dies.\n\nRefactoring existing resources into the module is a state rename, not a rebuild: `moved` blocks map `aws_ecs_service.app` to `module.svc.aws_ecs_service.this` with zero downtime.",
+        "snippet": "# modules/fargate-service/main.tf (excerpt)\nresource \"aws_ecr_repository\" \"this\" {\n  name                 = var.name\n  image_tag_mutability = \"IMMUTABLE\"\n  image_scanning_configuration { scan_on_push = true }\n}\nresource \"aws_cloudwatch_log_group\" \"this\" {\n  name              = \"/ecs/${var.name}\"\n  retention_in_days = var.log_retention_days   # default 90, never \"never\"\n}\nresource \"aws_ecs_task_definition\" \"this\" {\n  family                   = var.name\n  requires_compatibilities = [\"FARGATE\"]\n  network_mode             = \"awsvpc\"\n  cpu                      = var.cpu            # \"512\"\n  memory                   = var.memory         # \"1024\"\n  execution_role_arn       = var.execution_role_arn\n  task_role_arn            = var.task_role_arn\n  container_definitions = jsonencode([{\n    name = var.name, image = \"${aws_ecr_repository.this.repository_url}:${var.image_tag}\",\n    logConfiguration = { logDriver = \"awslogs\", options = {\n      \"awslogs-group\" = aws_cloudwatch_log_group.this.name,\n      \"awslogs-region\" = var.region, \"awslogs-stream-prefix\" = \"ecs\" } } }])\n}",
+        "snippetLang": "hcl",
+        "source": { "title": "Terraform modules", "url": "https://developer.hashicorp.com/terraform/language/modules" }
+      },
+      "cards": [
+        {
+          "id": "aws.tf-modules.c1",
+          "type": "mc",
+          "prompt": "Where should `provider \"aws\" { region = ... }` blocks live in a codebase with reusable modules?",
+          "options": [
+            "Only in the root module; child modules declare `required_providers` and receive providers from the caller",
+            "In every module, so each is self-contained",
+            "In a shared `providers.tf` that every module includes with `include`",
+            "Nowhere; Terraform infers providers from resource types"
+          ],
+          "answer": 0,
+          "why": "A module with its own provider block cannot be used with `count`/`for_each`, cannot be destroyed cleanly once removed, and cannot be pointed at another account or region by the caller. HCL has no `include`."
+        },
+        {
+          "id": "aws.tf-modules.c2",
+          "type": "mc",
+          "prompt": "The module's ECS task definition uses the `awslogs` driver to write to a CloudWatch log group. Which role must have `logs:CreateLogStream` and `logs:PutLogEvents`?",
+          "options": [
+            "The task execution role",
+            "The task role",
+            "The ECS service-linked role",
+            "The role of the engineer running `terraform apply`"
+          ],
+          "answer": 0,
+          "why": "The log driver runs in the ECS agent, not in your code, so it uses the execution role; `AmazonECSTaskExecutionRolePolicy` includes those actions. The task role is only for API calls your application makes."
+        },
+        {
+          "id": "aws.tf-modules.c3",
+          "type": "mc",
+          "prompt": "`module \"svc\" { source = \"../../modules/fargate-service\"  version = \"2.1.0\" }` fails on init. Why?",
+          "options": [
+            "The `version` argument is only valid for module registry sources; local paths and git URLs are pinned by path or ref instead",
+            "Local module paths must be absolute",
+            "Module versions must use the `~>` operator",
+            "Local sources are pinned with `?ref=v2.1.0` on the path instead of `version`"
+          ],
+          "answer": 0,
+          "why": "Version constraints are resolved against a registry's version list. For git sources you pin with `?ref=v2.1.0` in the URL; `?ref=` on a plain local path is not valid, because a local path is simply whatever is checked out."
+        },
+        {
+          "id": "aws.tf-modules.c4",
+          "type": "tf",
+          "prompt": "A root module can reference `module.svc.aws_ecs_service.this.name` directly without the module declaring an output.",
+          "answer": false,
+          "why": "Module internals are private; only `output` blocks are visible to the caller, which is what makes the module a stable contract. `moved` blocks are the one place that address into module internals, and only for state renames."
+        },
+        {
+          "id": "aws.tf-modules.c5",
+          "type": "cloze",
+          "prompt": "Setting `image_tag_mutability = \"___\"` on an ECR repository prevents a pushed tag like `1.4.2` from being overwritten by a different image.",
+          "answer": "IMMUTABLE",
+          "why": "With immutable tags a task definition pinned to `:1.4.2` always runs the same bytes, which is what an auditor asks for. `MUTABLE`, the default, lets a rebuilt `:latest` or even a re-pushed version tag silently change production."
+        },
+        {
+          "id": "aws.tf-modules.c6",
+          "type": "mc",
+          "prompt": "What does `aws_ecs_task_definition.container_definitions` expect?",
+          "options": [
+            "A JSON string, typically produced with `jsonencode([...])`",
+            "A nested HCL `container {}` block per container",
+            "A list of maps in HCL",
+            "A path to a YAML file"
+          ],
+          "answer": 0,
+          "why": "The attribute mirrors the ECS API's JSON array, so Terraform takes a string; `jsonencode` keeps it readable and type-checked. Writing HCL blocks is the natural guess and a common first error."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.tf-modules.e1",
+          "prompt": "Design me a Terraform module for a containerised service on Fargate. What are its inputs and outputs, and what do you deliberately leave out?",
+          "seconds": 120,
+          "modelAnswer": "Inputs: `name`, `environment`, `image_tag`, `cpu` and `memory` as the Fargate string pairs, `desired_count`, `subnets` and `security_group_ids`, `execution_role_arn` and `task_role_arn`, `log_retention_days` defaulting to 90, an optional target group ARN, environment variables and a list of secret ARNs for the `secrets` section, plus `tags`. Resources inside: an ECR repository with immutable tags, scan on push and a lifecycle policy keeping the last ten images; a log group with retention; a task definition with `awsvpc` networking and the awslogs driver; an ECS service on Fargate with the deployment circuit breaker and rollback enabled. Outputs: `repository_url`, `service_name`, `log_group_name` and the task definition ARN. What I leave out on purpose: provider blocks, because a reusable module must not configure providers; the IAM roles, because least privilege is per workload and I want them reviewed next to the business logic rather than hidden behind a default `Resource: *`; the VPC and cluster, which have a different lifecycle; and anything environment-specific like account ids. I version it with git tags so dev can take 2.1 before prod, and I migrate existing services into it with `moved` blocks rather than recreating them.",
+          "rubric": [
+            "Lists sensible inputs including roles, sizing, networking, log retention",
+            "Names the four resources: ECR, log group, task definition, service",
+            "Names outputs the pipeline needs (repository_url at minimum)",
+            "Excludes provider blocks and explains why",
+            "Keeps IAM roles outside or injected, with a least-privilege reason",
+            "Mentions versioning and/or moved blocks for migration"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.tf-modules.s1",
+          "situation": "Three client projects at the firm each have hand-written ECS Terraform that has diverged. One has log groups with no retention and a CloudWatch bill that doubled; another has mutable `latest` tags in production. A partner wants a 'platform standard' by next quarter without disrupting any client.",
+          "question": "How do you approach it?",
+          "options": [
+            {
+              "text": "Extract a versioned `fargate-service` module with safe defaults (90-day retention, immutable tags, scan on push, circuit breaker), publish it with git tags, and migrate each project with `moved` blocks so no resources are recreated.",
+              "verdict": "best",
+              "why": "Defaults in a module are the only standard that enforces itself. `moved` blocks make adoption a state rename with zero downtime, and versions let each client upgrade on its own schedule."
+            },
+            {
+              "text": "Write a standards document and a PR checklist, and ask each team to align over the quarter.",
+              "verdict": "ok",
+              "why": "It raises awareness but relies on every reviewer remembering every rule; the retention bug will reappear in the next project."
+            },
+            {
+              "text": "Consolidate all three clients into one Terraform root module and one state so the standard is applied once.",
+              "verdict": "bad",
+              "why": "One state across clients means one lock, one blast radius and shared credentials across confidential matters, which is exactly what a law firm's conflict wall forbids."
+            },
+            {
+              "text": "Delete the old resources and recreate them from the new module in each account during a weekend window.",
+              "verdict": "bad",
+              "why": "Recreating services means new log groups, lost history and downtime for every client when a state rename achieves the same result safely."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.tf-envs",
+      "title": "Environments and Blast Radius",
+      "tease": "Applying prod with dev credentials is one `terraform workspace select` away.",
+      "lesson": {
+        "body": "There are two ways to run the same configuration against dev, staging and prod. **CLI workspaces** (`terraform workspace new prod`) keep one directory, one backend and N state files; the S3 backend stores non-default workspaces under `env:/<workspace>/<key>` (configurable with `workspace_key_prefix`) and `terraform.workspace` gives you the name for conditionals. They are cheap and DRY, but the official docs are blunt: workspaces are not appropriate for deployments that need separate credentials and access controls. Everything shares one backend bucket and one set of provider credentials, so `terraform workspace select prod` followed by an apply with the wrong tfvars is a real failure mode, and `count = terraform.workspace == \"prod\" ? 3 : 1` conditionals multiply until nobody can read the config. Do not confuse them with HCP Terraform workspaces, which are isolated runs with their own variables and permissions.\n\n**Separate root modules per environment** (`envs/dev`, `envs/prod`, each with its own `backend` key, its own tfvars, ideally its own AWS account under Organizations) duplicate twenty lines of wiring but buy hard isolation: different IAM roles for the pipeline, different provider versions during an upgrade, a PR per environment, and a blast radius that stops at the account boundary. Shared logic lives in versioned modules, so dev can run `version = \"2.1.0\"` while prod is still on `2.0.3`. Terragrunt is the usual tool when the duplication becomes painful.\n\nWithin an environment, also split state by lifecycle: network, data stores and application in separate states linked through SSM parameters or data sources. A single state with 800 resources means twelve-minute plans, one lock for the whole team, and one bad apply touching everything. It is the same instinct as splitting a monolith into bounded contexts: small states plan fast, lock briefly and fail small.",
+        "snippet": "infra/\n  modules/\n    fargate-service/      # versioned via git tag v2.1.0\n    network/\n  envs/\n    dev/                  # account 111111111111, pipeline role tf-dev-apply\n      backend.tf          # key = \"dev/app/terraform.tfstate\"\n      main.tf             # module \"svc\" { source = \"../../modules/fargate-service?ref=v2.1.0\" }\n      dev.tfvars\n    prod/                 # account 222222222222, pipeline role tf-prod-apply\n      backend.tf          # key = \"prod/app/terraform.tfstate\"\n      main.tf             # same module, ref=v2.0.3 until promoted\n      prod.tfvars\n\nWorkspaces instead: one directory, one bucket, one credential set\n  s3://bucket/app/terraform.tfstate            (default workspace)\n  s3://bucket/env:/prod/app/terraform.tfstate  (workspace \"prod\")",
+        "snippetLang": "text",
+        "source": { "title": "Manage resources in Terraform state: Workspaces", "url": "https://developer.hashicorp.com/terraform/language/state/workspaces" }
+      },
+      "cards": [
+        {
+          "id": "aws.tf-envs.c1",
+          "type": "mc",
+          "prompt": "With the S3 backend, `key = \"app/terraform.tfstate\"` and workspace `prod`, where is the prod state stored?",
+          "options": [
+            "`env:/prod/app/terraform.tfstate`",
+            "`prod/app/terraform.tfstate`",
+            "`app/terraform.tfstate.prod`",
+            "`app/terraform.tfstate` in a bucket named after the workspace"
+          ],
+          "answer": 0,
+          "why": "Non-default workspaces are prefixed with `workspace_key_prefix`, which defaults to `env:`. The default workspace stays at the bare key, which is why people are surprised to find two 'kinds' of path in the bucket."
+        },
+        {
+          "id": "aws.tf-envs.c2",
+          "type": "mc",
+          "prompt": "According to HashiCorp's own documentation, CLI workspaces are NOT appropriate for which situation?",
+          "options": [
+            "Deployments requiring separate credentials and access controls",
+            "Deploying the same stack to multiple regions",
+            "Short-lived preview environments for feature branches",
+            "Stacks that contain stateful resources such as RDS"
+          ],
+          "answer": 0,
+          "why": "Workspaces share one backend and one provider configuration, so they cannot give prod a different IAM role than dev. Multi-region and preview environments with shared credentials are the cases where they fit; stateful resources are a reason for `prevent_destroy`, not a reason to avoid workspaces."
+        },
+        {
+          "id": "aws.tf-envs.c3",
+          "type": "tf",
+          "prompt": "CLI workspaces and HCP Terraform (formerly Terraform Cloud) workspaces are the same feature with the same isolation guarantees.",
+          "answer": false,
+          "why": "HCP workspaces are separate runs with their own variables, credentials and permissions; CLI workspaces are just alternate state files behind one configuration. Mixing the two up in an interview signals shallow experience."
+        },
+        {
+          "id": "aws.tf-envs.c4",
+          "type": "cloze",
+          "prompt": "The expression `terraform.___` returns the name of the currently selected CLI workspace.",
+          "answer": "workspace",
+          "why": "It is useful for tagging, and dangerous for `count` and sizing conditionals that fork the configuration per environment; separate tfvars per environment keep the config readable."
+        },
+        {
+          "id": "aws.tf-envs.c5",
+          "type": "mc",
+          "prompt": "Why split one environment's infrastructure into separate states for network, data and application?",
+          "options": [
+            "Smaller plans, shorter lock windows and a smaller blast radius per apply",
+            "Terraform limits a state file to 1,000 resources",
+            "The AWS provider requires one state per service",
+            "S3 charges per object size, so smaller states are cheaper"
+          ],
+          "answer": 0,
+          "why": "A plan refreshes every resource in the state and holds the lock while it does, so an app deploy should not refresh 400 network resources or risk touching the database. There is no hard resource limit."
+        },
+        {
+          "id": "aws.tf-envs.c6",
+          "type": "tf",
+          "prompt": "You cannot delete the `default` workspace.",
+          "answer": true,
+          "why": "Every backend starts with `default` and Terraform refuses to delete it. Teams that use workspaces for environments often leave `default` empty to avoid an accidental apply into an unnamed environment."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.tf-envs.e1",
+          "prompt": "Workspaces or separate directories per environment? Defend your choice for a client with dev, staging and prod in separate AWS accounts.",
+          "seconds": 120,
+          "modelAnswer": "Separate root modules per environment, and I would say so even if it costs duplication. The deciding factor is credentials: with separate accounts each environment has its own pipeline role, and HashiCorp's own docs say CLI workspaces are not appropriate when deployments need separate credentials and access controls. Workspaces share one backend and one provider configuration, so the prod guardrail is a human remembering `workspace select`. With `envs/prod` the backend key, the assumed role, the tfvars and the approval gate are all fixed by the directory, and the Azure DevOps or GitHub pipeline for prod simply cannot see dev credentials. It also lets me upgrade a module or the AWS provider in dev first, because each environment pins its own version. The duplication is small, a backend block and a module call with variables, and Terragrunt exists if it grows. Where workspaces are fine: ephemeral preview environments inside the dev account, same credentials, same lifetime, torn down with `workspace delete`. And in both models I split state by component, network, data, app, so a change to one does not hold the lock or risk the others.",
+          "rubric": [
+            "Chooses separate root modules and ties the choice to credentials and account separation",
+            "Quotes or paraphrases the docs' warning about workspaces",
+            "Explains per-environment version pinning of modules/providers",
+            "Acknowledges the duplication cost and a mitigation (modules, Terragrunt)",
+            "Names a legitimate workspace use case",
+            "Mentions splitting state by component"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.tf-envs.s1",
+          "situation": "A Fortune 100 client's internal team hands you their Terraform: one AWS account, one state file with about 800 resources covering VPC, RDS, ECS and IAM for dev and prod, distinguished by `terraform.workspace` conditionals. Plans take twelve minutes, the team of five constantly waits on the state lock, and last month a dev apply changed a prod security group.",
+          "question": "What do you propose?",
+          "options": [
+            {
+              "text": "Move prod into its own AWS account under Organizations with its own pipeline role, split the configuration into per-environment root modules and per-component states (network, data, app) linked via SSM parameters, and migrate using `terraform state mv` or `moved` blocks with no resource recreation.",
+              "verdict": "best",
+              "why": "The incident was caused by shared credentials and shared state, which only account and state separation fix. Component splitting addresses the twelve-minute plans and lock contention, and state moves avoid downtime."
+            },
+            {
+              "text": "Keep one account but split the state into per-component files and add a pipeline approval step for the prod workspace.",
+              "verdict": "ok",
+              "why": "Faster plans and fewer lock waits, but the same credentials still reach prod; an approval step is a human control on a technical problem."
+            },
+            {
+              "text": "Have engineers use `-target` to limit each apply to the resources they changed.",
+              "verdict": "bad",
+              "why": "`-target` is a recovery tool; routine use leaves state drifting from config and hides the destructive diffs until someone runs a full apply."
+            },
+            {
+              "text": "Add more `terraform.workspace` conditionals so dev and prod can never select the same security group.",
+              "verdict": "bad",
+              "why": "It deepens the unreadable configuration that caused the incident and still runs everything with one set of credentials."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.tf-workflow",
+      "title": "Drift, Import and PR Review",
+      "tease": "Someone clicked in the console on Friday. Monday's plan wants to undo it. Who's right?",
+      "lesson": {
+        "body": "**Drift** is any change made outside Terraform: a console edit, an autoscaler, another tool. `terraform plan` refreshes real infrastructure first and prints *Objects have changed outside of Terraform* before the proposed actions. You then decide: revert (apply the config), accept (`terraform apply -refresh-only` updates state without touching infrastructure, often with `ignore_changes`), or codify the change in HCL so the plan goes to zero. Never accept or revert drift on security controls blindly; the console edit might have been the incident response.\n\n**Adopting existing resources**: `terraform import ADDRESS ID` is imperative and one at a time. Since 1.5, `import { to = aws_s3_bucket.docs, id = \"firm-a-docs\" }` blocks are declarative and reviewable in a PR, and `terraform plan -generate-config-out=generated.tf` writes the matching resource blocks; 1.16 allows them inside modules. **Refactoring**: `moved { from, to }` (1.1) renames addresses without destroy and create; `removed { from ... lifecycle { destroy = false } }` (1.7) forgets a resource without deleting it, replacing hand-run `terraform state rm`.\n\n**PR workflow**: CI runs `fmt -check`, `validate`, then `plan -out=tfplan -detailed-exitcode` (exit 0 no changes, 1 error, 2 changes) with a read-only role and posts the plan as a PR comment. Reviewers read the summary (`Plan: 2 to add, 1 to change, 1 to destroy`), hunt for `-/+` and *forces replacement*, and read IAM and security-group diffs line by line. On merge, the pipeline applies the saved plan with a separate apply role via OIDC; a stale plan fails rather than applying surprises. In Azure DevOps terms: a PR validation pipeline with a plan stage, then an environment with approvals before apply.\n\n**Licensing**, briefly: Terraform moved from MPL 2.0 to BSL 1.1 in August 2023 (1.6 onward); free unless you build a competing product. OpenTofu is the MPL fork under the Linux Foundation and CNCF. IBM completed its acquisition of HashiCorp in February 2025; Terraform 1.16.0 shipped on 26 August 2026 and 1.17 is in release candidate as of October 2026, so a `required_version = \">= 1.11\"` pin is conservative, not current.",
+        "snippet": "import {\n  to = aws_s3_bucket.docs\n  id = \"firm-a-privileged-docs\"     # then: terraform plan -generate-config-out=gen.tf\n}\n\nmoved {\n  from = aws_ecs_service.app\n  to   = module.svc.aws_ecs_service.this   # rename in state, no destroy\n}\n\nremoved {\n  from = aws_cloudwatch_log_group.legacy\n  lifecycle { destroy = false }     # forget it, keep the logs\n}\n\n# CI (PR):    terraform plan -out=tfplan -detailed-exitcode\n#             exit 0 = no changes, 1 = error, 2 = changes to review\n# CD (merge): terraform apply tfplan   # fails if state moved since the plan",
+        "snippetLang": "hcl",
+        "source": { "title": "Import existing resources (import block)", "url": "https://developer.hashicorp.com/terraform/language/import" }
+      },
+      "cards": [
+        {
+          "id": "aws.tf-workflow.c1",
+          "type": "mc",
+          "prompt": "A nightly job runs `terraform plan -detailed-exitcode` and returns exit code 2. What does that mean?",
+          "options": [
+            "The plan succeeded and there are changes (drift or unapplied config)",
+            "The plan failed with an error",
+            "The plan succeeded with no changes",
+            "The state lock is held by another process"
+          ],
+          "answer": 0,
+          "why": "0 is no changes, 1 is error, 2 is changes present. That makes a drift detector a one-liner in a scheduled pipeline; treating 2 as failure is the common misread."
+        },
+        {
+          "id": "aws.tf-workflow.c2",
+          "type": "mc",
+          "prompt": "You are moving `aws_ecs_service.app` into a new module as `module.svc.aws_ecs_service.this`. How do you avoid Terraform destroying and recreating the service?",
+          "options": [
+            "Add a `moved { from = aws_ecs_service.app  to = module.svc.aws_ecs_service.this }` block",
+            "Delete the old resource block, apply, then add the module and apply again",
+            "Run `terraform taint` on the old address first",
+            "Set `create_before_destroy = true` so the new service starts before the old one stops"
+          ],
+          "answer": 0,
+          "why": "`moved` is a declarative state rename reviewed in the PR; the plan shows 'has moved to' instead of destroy/create. Taint forces replacement, and create_before_destroy still means a new service with a new ARN."
+        },
+        {
+          "id": "aws.tf-workflow.c3",
+          "type": "mc",
+          "prompt": "What does a `removed` block with `lifecycle { destroy = false }` do on apply?",
+          "options": [
+            "Removes the resource from state and leaves the real resource untouched",
+            "Destroys the real resource and removes it from state",
+            "Marks the resource as deprecated so future plans warn",
+            "Nothing until you also run `terraform destroy -target`"
+          ],
+          "answer": 0,
+          "why": "It is the declarative equivalent of `terraform state rm`, useful when another team or tool takes over a resource. With `destroy = true` it would delete the resource, so review that flag carefully."
+        },
+        {
+          "id": "aws.tf-workflow.c4",
+          "type": "tf",
+          "prompt": "`terraform apply -refresh-only` changes real infrastructure so it matches the configuration.",
+          "answer": false,
+          "why": "Refresh-only updates only the state to match reality; infrastructure is untouched. It is how you accept drift, and the opposite of a normal apply that reverts drift."
+        },
+        {
+          "id": "aws.tf-workflow.c5",
+          "type": "cloze",
+          "prompt": "Declarative `import` blocks, reviewable in a PR and able to generate configuration, arrived in Terraform ___ in 2023.",
+          "answer": "1.5",
+          "why": "Before 1.5 the only option was the imperative `terraform import` CLI run per resource with hand-written config. The version matters because older pinned pipelines will reject the block."
+        },
+        {
+          "id": "aws.tf-workflow.c6",
+          "type": "mc",
+          "prompt": "Under which licence is Terraform released from version 1.6 onward?",
+          "options": [
+            "Business Source License 1.1",
+            "Mozilla Public License 2.0",
+            "Apache License 2.0",
+            "GNU AGPL v3"
+          ],
+          "answer": 0,
+          "why": "HashiCorp relicensed in August 2023; the BSL forbids using Terraform to build a competing product but is fine for consultancies and end users. MPL 2.0 was the old licence and is what the OpenTofu fork kept."
+        },
+        {
+          "id": "aws.tf-workflow.c7",
+          "type": "tf",
+          "prompt": "OpenTofu is HashiCorp's own community edition of Terraform.",
+          "answer": false,
+          "why": "OpenTofu is an independent fork under the Linux Foundation (accepted into the CNCF in 2025), created in response to the BSL change. HashiCorp itself is now part of IBM, which closed the acquisition in February 2025."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.tf-workflow.e1",
+          "prompt": "How do you run Terraform in CI so nobody applies from a laptop, and what does a reviewer actually look at in a plan?",
+          "seconds": 120,
+          "modelAnswer": "Two pipelines, two roles. On pull request, a validation pipeline assumes a read-only role via OIDC, runs `fmt -check`, `validate`, a policy check, then `plan -out=tfplan -detailed-exitcode` and posts the plan as a PR comment; exit code 2 means changes, 0 means a no-op, 1 means broken. The plan artifact is stored. On merge to main, a deploy pipeline assumes the apply role, which is the only principal with write permissions in the account, and runs `apply tfplan` behind an environment approval. Applying the saved plan guarantees that what was reviewed is what runs; if state moved on, Terraform refuses the stale plan. Laptops get plan-only credentials, so an accidental apply fails. Reviewers read the summary line first, then every `-/+` or forces replacement, because that is a destroy. They look at IAM policy documents and security group rules line by line, at anything touching data stores, and at provider or module version bumps. They should also ask why a change appears that the PR did not intend, which is drift surfacing. In Azure DevOps terms it is a PR validation build plus a release stage with approvals and a service connection using workload identity federation.",
+          "rubric": [
+            "Separate plan (read) and apply (write) roles, ideally via OIDC",
+            "Plan posted to the PR; apply only from the pipeline after approval",
+            "Saved plan artifact and stale-plan protection",
+            "Reviewer focus: replacements, IAM and security group diffs, data stores",
+            "Mentions detailed-exitcode or drift surfacing in plans"
+          ]
+        },
+        {
+          "id": "aws.tf-workflow.e2",
+          "prompt": "What is drift, how does Terraform detect it, and when do you accept it versus revert it?",
+          "seconds": 120,
+          "modelAnswer": "Drift is the real resource differing from the state Terraform last recorded, because someone changed it outside Terraform: a console edit, an auto-scaling policy, a security team's emergency change. Terraform detects it during plan's refresh phase: it reads the live attributes through the provider and prints an *Objects have changed outside of Terraform* section before the proposed actions. If the config still says the old value, the plan will revert the change; that is the trap. Three honest responses. Revert, when the drift is an unauthorised or accidental change, by applying the config. Accept into state only, with `apply -refresh-only`, when the attribute is one I do not want to manage, and ideally add it to `ignore_changes`. Codify, when the change was right, by updating the HCL so the plan goes to zero and the change becomes reviewable history. On a privileged-document bucket I treat a hardening change as codify, never revert, and I ask who made it and why before anything else. Operationally, a nightly `plan -detailed-exitcode` in CI that alerts on exit code 2 turns drift from a Monday surprise into a ticket.",
+          "rubric": [
+            "Defines drift as out-of-band change to real resources",
+            "Explains detection via refresh during plan and the 'changed outside' section",
+            "Describes revert, refresh-only accept, and codify as distinct options",
+            "Applies judgement to security-related drift",
+            "Mentions scheduled detection with detailed-exitcode"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.tf-workflow.s1",
+          "situation": "During a client audit on Friday, the law firm's security lead added a bucket policy statement to the privileged-documents bucket directly in the console, denying any request without TLS. On Monday your pipeline's plan shows it will remove that statement because the HCL does not have it. The auditor returns Wednesday.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Codify the deny-non-TLS statement in the `aws_s3_bucket_policy` HCL, confirm the plan drops to zero changes for that bucket, merge, and note in the PR who made the change and why.",
+              "verdict": "best",
+              "why": "The change was right and the auditor expects it to be there; turning it into code makes it permanent and reviewable. Reverting it to satisfy Terraform would undo a security control days before the auditor returns."
+            },
+            {
+              "text": "Run `terraform apply -refresh-only` to accept the current bucket policy into state and add `ignore_changes` on the policy attribute.",
+              "verdict": "ok",
+              "why": "It stops the revert, but the control now lives only in the console and future rebuilds lose it; ignore_changes on a security attribute hides future drift too."
+            },
+            {
+              "text": "Apply the plan to restore consistency between code and infrastructure, then open a ticket to add TLS enforcement properly later.",
+              "verdict": "bad",
+              "why": "Consistency with a weaker configuration is a regression. The auditor will find the control missing and the client will find out it was Terraform that removed it."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.iam",
+      "title": "IAM: Roles, Policies, Boundaries",
+      "tease": "An Allow in two policies and a Deny in none, and the request still fails. Why?",
+      "lesson": {
+        "body": "IAM has four moving parts: **principals** (users, roles, AWS services), **policies** (JSON with `Effect`, `Action`, `Resource`, `Condition`), the **resources** they target, and the **evaluation logic** combining them. Rule one: everything is implicitly denied, and an explicit `Deny` anywhere beats any `Allow`. Then the request must pass every gate that applies: Organizations SCPs and RCPs, a permissions boundary if attached, a session policy if passed, and finally an `Allow` from an identity-based or, in the same account, a resource-based policy. Within one account identity and resource policies are a union; across accounts both sides must allow.\n\n**Roles, not users.** A role has no long-lived credentials; `sts:AssumeRole` issues temporary ones (1 hour by default, up to 12 hours per role setting). Humans come in through IAM Identity Center, workloads through roles on compute, CI through OIDC federation (Azure DevOps workload identity, GitHub Actions). An access key in an environment variable is what auditors find.\n\n**ECS has two roles per task.** The *execution role* is used by the ECS agent before your code runs: pulling from ECR, creating log streams for the `awslogs` driver, fetching `secrets` from Secrets Manager or SSM. AWS ships `AmazonECSTaskExecutionRolePolicy` for it. The *task role* is what your application code gets through the container credential endpoint at `169.254.170.2` (think Azure managed identity via IMDS): S3, Bedrock, DynamoDB. Both trust `ecs-tasks.amazonaws.com`; add `aws:SourceAccount` and `aws:SourceArn` conditions to the trust policy against the confused deputy. Whoever registers the task definition needs `iam:PassRole` on both roles; forgetting that is the most common deploy failure.\n\n**Permissions boundaries** are a managed policy on a user or role that caps what its identity policies can grant: effective permissions are the intersection, and the boundary grants nothing by itself. Their real use is delegation: let a project team create roles, but only with `iam:PermissionsBoundary` set to the company boundary, so nobody can mint an admin role.",
+        "snippet": "{ \"Version\": \"2012-10-17\",\n  \"Statement\": [{\n    \"Sid\": \"TrustEcsTasksOnlyFromThisAccount\",\n    \"Effect\": \"Allow\",\n    \"Principal\": { \"Service\": \"ecs-tasks.amazonaws.com\" },\n    \"Action\": \"sts:AssumeRole\",\n    \"Condition\": {\n      \"StringEquals\": { \"aws:SourceAccount\": \"222222222222\" },\n      \"ArnLike\":      { \"aws:SourceArn\": \"arn:aws:ecs:eu-central-1:222222222222:*\" }\n    }\n  }]\n}\n\n// task role permissions: one matter prefix, one model\n{ \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    { \"Effect\": \"Allow\", \"Action\": [\"s3:GetObject\"],\n      \"Resource\": \"arn:aws:s3:::firm-a-privileged-docs/matter-2291/*\" },\n    { \"Effect\": \"Allow\", \"Action\": [\"bedrock:InvokeModel\", \"bedrock:InvokeModelWithResponseStream\"],\n      \"Resource\": \"arn:aws:bedrock:eu-central-1::foundation-model/anthropic.*\" }\n  ]\n}",
+        "snippetLang": "json",
+        "source": { "title": "IAM policy evaluation logic", "url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_evaluation-logic.html" }
+      },
+      "cards": [
+        {
+          "id": "aws.iam.c1",
+          "type": "mc",
+          "prompt": "An ECS Fargate task must pull its image from a private ECR repository and ship logs with the awslogs driver. Which role needs those permissions?",
+          "options": [
+            "The task execution role",
+            "The task role",
+            "Both roles, because Fargate merges them",
+            "The EC2 instance profile"
+          ],
+          "answer": 0,
+          "why": "Image pull and log delivery happen in the ECS agent before and around your container, using the execution role. The task role is only visible to your application code; Fargate has no instance profile."
+        },
+        {
+          "id": "aws.iam.c2",
+          "type": "mc",
+          "prompt": "Your .NET container calls `bedrock:InvokeModel` and reads from S3. Which role carries those permissions, and how does the SDK find its credentials?",
+          "options": [
+            "The task role; the SDK fetches temporary credentials from the container credential endpoint at 169.254.170.2",
+            "The execution role; the SDK reads credentials from environment variables set by ECS",
+            "The task role; you must mount an access key as a secret",
+            "The ECS service-linked role, which is shared by all tasks in the cluster"
+          ],
+          "answer": 0,
+          "why": "ECS exposes `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` and the SDK credential chain calls the local endpoint, getting role credentials that rotate automatically. Access keys in containers are the anti-pattern this feature exists to remove."
+        },
+        {
+          "id": "aws.iam.c3",
+          "type": "mc",
+          "prompt": "A role has an identity policy allowing `s3:PutObject`, the account's SCP allows it, and the role has a permissions boundary that does not mention S3. What happens?",
+          "options": [
+            "Denied: the boundary has an implicit deny and effective permissions are the intersection",
+            "Allowed: the boundary only restricts actions it explicitly denies",
+            "Allowed if the bucket is in the same account",
+            "Denied only if the boundary contains an explicit Deny"
+          ],
+          "answer": 0,
+          "why": "A boundary caps identity-based permissions; anything not allowed in it is implicitly denied. The tempting belief is that boundaries work like deny lists, but they are allow lists that grant nothing on their own."
+        },
+        {
+          "id": "aws.iam.c4",
+          "type": "tf",
+          "prompt": "Attaching a permissions boundary that allows `s3:*` gives the role S3 access even if its identity policies do not.",
+          "answer": false,
+          "why": "Boundaries never grant; they only limit. The role still needs an identity-based Allow, and the effective permission is the overlap of both."
+        },
+        {
+          "id": "aws.iam.c5",
+          "type": "tf",
+          "prompt": "In the same account, a bucket policy that allows a role `s3:GetObject` is sufficient even if the role's identity policy says nothing about S3.",
+          "answer": true,
+          "why": "Same-account identity and resource policies are evaluated as a union, so either Allow suffices (absent a Deny, SCP or boundary blocking it). Cross-account, both the identity policy and the bucket policy must allow."
+        },
+        {
+          "id": "aws.iam.c6",
+          "type": "cloze",
+          "prompt": "Both ECS task roles must trust the service principal `___.amazonaws.com`.",
+          "answer": "ecs-tasks",
+          "why": "`ecs.amazonaws.com` is the ECS service itself (service-linked role) and `ec2.amazonaws.com` is for instances; using either in a task role's trust policy produces a confusing 'unable to assume role' at task start."
+        },
+        {
+          "id": "aws.iam.c7",
+          "type": "mc",
+          "prompt": "The deploy pipeline fails with AccessDenied while calling `ecs:RegisterTaskDefinition`, even though it has `ecs:*`. What is the most likely missing permission?",
+          "options": [
+            "`iam:PassRole` on the task role and execution role ARNs",
+            "`sts:AssumeRole` on the task role",
+            "`ecr:GetAuthorizationToken`",
+            "`iam:CreateRole`"
+          ],
+          "answer": 0,
+          "why": "Handing a role to a service requires PassRole on that role, otherwise anyone with ecs:* could run code as any role in the account. It is the single most common IAM error in ECS deployments."
+        },
+        {
+          "id": "aws.iam.c8",
+          "type": "cloze",
+          "prompt": "Temporary credentials from `sts:AssumeRole` last ___ by default, and a role's maximum session duration can be raised to 12 hours.",
+          "answer": "1 hour",
+          "why": "Short lifetimes are the point of roles: a leaked credential dies quickly. Services like ECS refresh task credentials automatically, so your code never handles the rotation."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.iam.e1",
+          "prompt": "Explain the difference between an ECS task role and a task execution role to a .NET developer who has used Azure managed identities.",
+          "seconds": 120,
+          "modelAnswer": "Think of the execution role as the identity of the hosting platform and the task role as your app's managed identity. Before your container runs, the ECS agent needs to pull the image from ECR, create the log stream for the awslogs driver, and fetch any secrets you declared in the task definition's `secrets` section from Secrets Manager or Parameter Store. Those calls are made with the execution role; AWS provides `AmazonECSTaskExecutionRolePolicy` for the common cases and you add `secretsmanager:GetSecretValue` on your specific secret ARNs. Your code never sees those credentials. Once the container is up, the AWS SDK inside it, say `AWSSDK.S3` in .NET, resolves credentials from the container credential endpoint at 169.254.170.2, the same pattern as IMDS behind `DefaultAzureCredential`. That returns temporary credentials for the task role, which is where the application's permissions live: read this bucket prefix, call Bedrock, write to this table. One role per service, least privilege, with `aws:SourceArn` conditions in the trust policy. Two gotchas: the deployer needs `iam:PassRole` on both roles to register the task definition, and on the EC2 launch type containers can reach the instance's IMDS unless you block it, so Fargate is the cleaner isolation story.",
+          "rubric": [
+            "Execution role: ECR pull, awslogs, secrets injection, used by the agent",
+            "Task role: application API calls via the SDK credential chain",
+            "Mentions the container credential endpoint or managed-identity analogy",
+            "One role per service with least privilege",
+            "Mentions iam:PassRole or trust policy conditions"
+          ]
+        },
+        {
+          "id": "aws.iam.e2",
+          "prompt": "Walk me through IAM policy evaluation. An engineer has an Allow in their identity policy and still gets AccessDenied. Where do you look?",
+          "seconds": 120,
+          "modelAnswer": "The evaluation is deny-first, then a chain of gates that all have to pass. First, any explicit Deny in any applicable policy ends it, so I search identity policies, resource policies and SCPs for a Deny that matches, often one with a condition like `aws:RequestedRegion` or an MFA requirement. Second, Organizations: an SCP or RCP must allow the action; the account could be under a policy that blocks the service entirely. Third, if the principal has a permissions boundary, the action must appear in it too; effective permissions are the intersection, and boundaries grant nothing on their own. Fourth, if they are using an assumed role, a session policy may have narrowed things. Only then does the Allow count, and for same-account requests the identity and resource policies are a union, so a bucket policy can grant on its own. Cross-account, both the identity policy and the resource policy must allow. For KMS the key policy is special: IAM allows are ignored unless the key policy enables them. Practically I open CloudTrail, find the event, read `errorMessage`, which often names the denying policy type, and confirm with the IAM policy simulator or Access Analyzer.",
+          "rubric": [
+            "Explicit deny always wins; implicit deny is the default",
+            "SCPs/RCPs as an account-level gate",
+            "Permissions boundaries as intersection",
+            "Same-account union vs cross-account both-sides rule",
+            "Mentions KMS key policy exception or session policies",
+            "Uses CloudTrail/policy simulator to diagnose"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.iam.s1",
+          "situation": "The agent service must read privileged documents for one matter of Firm A from S3 and call Bedrock. A developer, under deadline pressure, proposes attaching `AmazonS3FullAccess` and `AmazonBedrockFullAccess` to the task role 'for now' and opening a ticket to tighten later. The same AWS account hosts buckets for two other law-firm clients.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Write a task-role policy scoped to `s3:GetObject` on the matter prefix and `bedrock:InvokeModel` on the specific model ARNs, add a bucket policy that denies access from any principal other than that role, and add `aws:SourceArn` to the trust policy.",
+              "verdict": "best",
+              "why": "Full access on a shared account means one bug in the agent can read another law firm's documents, which is a conflict-wall breach, not a ticket. Scoping takes an hour and is the permission the auditor will ask to see."
+            },
+            {
+              "text": "Attach `AmazonS3ReadOnlyAccess` plus a scoped Bedrock policy, and tighten S3 to the prefix after launch.",
+              "verdict": "ok",
+              "why": "Read-only still spans every bucket in the account, including other clients' documents; it is better than full access but not defensible to the client."
+            },
+            {
+              "text": "Attach the full-access policies, open the ticket, and add a permissions boundary later to cap them.",
+              "verdict": "bad",
+              "why": "The exposure exists from the first task launch, and a later boundary would still need the policy rewritten; 'for now' is how production permissions are born."
+            },
+            {
+              "text": "Create an IAM user with an access key scoped to the bucket and inject it as an environment variable, avoiding role plumbing entirely.",
+              "verdict": "bad",
+              "why": "Long-lived keys in container environments are the exact thing task roles were built to eliminate, and they will show up in a CloudTrail credential report during the audit."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.kms",
+      "title": "KMS and Envelope Encryption",
+      "tease": "KMS refuses to encrypt anything over 4 KB. So how does it encrypt a 2 GB deposition?",
+      "lesson": {
+        "body": "KMS keys never leave FIPS 140-3 Level 3 HSMs; you call the service to use them. Three kinds: **customer managed keys** (you own policy, rotation and deletion; about $1 per key per month plus $0.03 per 10,000 symmetric requests after a 20,000-request monthly free tier), **AWS managed keys** (`aws/s3`, free to hold, usable only by that service in your account) and **AWS owned keys** (invisible, unauditable, free). Clients who need to prove control choose customer managed keys.\n\n**Access is decided by the key policy first.** Every key has exactly one, it is regional, and IAM policies can only *allow* access if the key policy contains the statement that lets the account root principal, and therefore IAM, in. Without it, `kms:Decrypt` in an IAM policy does nothing; IAM can still deny. Conditions like `kms:ViaService` restrict a key to use through S3 or RDS only, and `kms:EncryptionContext:` keys tie use to a matter or client.\n\n**Envelope encryption** is the mechanism behind every encrypted-at-rest checkbox. `Encrypt` accepts at most 4,096 bytes of plaintext, so nobody encrypts documents with it. Instead `GenerateDataKey` returns a plaintext 256-bit data key and the same key encrypted under the KMS key; you encrypt the object locally with AES-256-GCM, store the encrypted data key next to the ciphertext, and discard the plaintext key. To read, call `Decrypt` on the small encrypted data key. S3 SSE-KMS does exactly this per object (Bucket Keys reduce the KMS calls); the AWS Encryption SDK does it client-side.\n\n**Encryption context** is authenticated additional data: key-value pairs that must match on decrypt and appear in CloudTrail, so a `kms:Decrypt` event can carry `{\"matter\":\"A-2291\"}`. **Rotation** adds new material every 365 days by default (`RotationPeriodInDays` accepts 90 to 2,560, and on-demand rotation exists); old ciphertext stays decryptable because KMS keeps every previous version, so nothing is re-encrypted and a compromised data key is not helped by it. **Deletion** needs a 7 to 30 day waiting period (default 30) during which the key is unusable; disable first and alarm on attempted use.",
+        "snippet": "import boto3, os\nfrom cryptography.hazmat.primitives.ciphers.aead import AESGCM\n\nkms = boto3.client(\"kms\")\nctx = {\"client\": \"firm-a\", \"matter\": \"A-2291\"}   # AAD, logged in CloudTrail\n\n# 1. ask KMS for a data key (plaintext + encrypted copy)\ndk = kms.generate_data_key(KeyId=\"alias/firm-a-docs\", KeySpec=\"AES_256\", EncryptionContext=ctx)\n\n# 2. encrypt the 2 GB deposition locally; KMS never sees it\nnonce = os.urandom(12)\nciphertext = AESGCM(dk[\"Plaintext\"]).encrypt(nonce, document_bytes, None)\nstore(ciphertext, nonce, encrypted_key=dk[\"CiphertextBlob\"])\ndel dk  # drop the plaintext key\n\n# 3. later: decrypt only the small key blob (must pass the same context)\nplain_key = kms.decrypt(CiphertextBlob=encrypted_key, EncryptionContext=ctx)[\"Plaintext\"]\ndocument_bytes = AESGCM(plain_key).decrypt(nonce, ciphertext, None)",
+        "snippetLang": "python",
+        "source": { "title": "AWS KMS key policies", "url": "https://docs.aws.amazon.com/kms/latest/developerguide/key-policies.html" }
+      },
+      "cards": [
+        {
+          "id": "aws.kms.c1",
+          "type": "mc",
+          "prompt": "What is the maximum plaintext size the KMS `Encrypt` API accepts?",
+          "options": [
+            "4,096 bytes",
+            "64 KB",
+            "1 MB",
+            "No limit; it streams"
+          ],
+          "answer": 0,
+          "why": "KMS is designed to encrypt keys, not data. The 4 KB cap forces envelope encryption: generate a data key, encrypt locally, protect only the data key with KMS."
+        },
+        {
+          "id": "aws.kms.c2",
+          "type": "mc",
+          "prompt": "A role's IAM policy allows `kms:Decrypt` on a customer managed key, but the key policy contains no statement granting the account root (or the role) access. Result?",
+          "options": [
+            "Denied: IAM policies cannot allow KMS access unless the key policy enables them",
+            "Allowed, because identity and resource policies are a union in the same account",
+            "Allowed only if the key and role are in the same region",
+            "Allowed after a grant is created automatically"
+          ],
+          "answer": 0,
+          "why": "KMS is the exception to the same-account union rule: the key policy must explicitly allow the principal or enable IAM via the root statement. IAM policies can still deny."
+        },
+        {
+          "id": "aws.kms.c3",
+          "type": "mc",
+          "prompt": "What does `GenerateDataKey` return?",
+          "options": [
+            "A plaintext data key and a copy of it encrypted under the KMS key",
+            "Only an encrypted data key; you call Decrypt to get the plaintext",
+            "A new KMS key ARN scoped to the caller",
+            "A plaintext data key only; you must call Encrypt to protect it"
+          ],
+          "answer": 0,
+          "why": "You use the plaintext copy immediately and store the encrypted copy with the data. `GenerateDataKeyWithoutPlaintext` is the variant that returns only the encrypted copy, for components that store but never read."
+        },
+        {
+          "id": "aws.kms.c4",
+          "type": "tf",
+          "prompt": "When automatic key rotation runs, KMS re-encrypts existing ciphertexts with the new key material.",
+          "answer": false,
+          "why": "Rotation adds new backing material for future encryptions; all previous versions are retained so old ciphertext still decrypts. Nothing is re-encrypted, which is why rotation is cheap and transparent."
+        },
+        {
+          "id": "aws.kms.c5",
+          "type": "tf",
+          "prompt": "Scheduling a KMS key for deletion requires a waiting period between 7 and 30 days, and the default is 30 days.",
+          "answer": true,
+          "why": "During the wait the key is in PendingDeletion and unusable, so anything still depending on it fails loudly and you can cancel. After deletion, data encrypted under it is unrecoverable."
+        },
+        {
+          "id": "aws.kms.c6",
+          "type": "cloze",
+          "prompt": "Encryption ___ is a set of key-value pairs bound to a ciphertext as additional authenticated data; it must match on decrypt and is recorded in CloudTrail.",
+          "answer": "context",
+          "why": "It is not secret, but it prevents a ciphertext from being decrypted under a different label and gives every CloudTrail decrypt event a business meaning such as the matter id."
+        },
+        {
+          "id": "aws.kms.c7",
+          "type": "mc",
+          "prompt": "Roughly what does a customer managed KMS key cost just to exist?",
+          "options": [
+            "About $1 per month, prorated hourly",
+            "Nothing; only API requests are billed",
+            "About $10 per month",
+            "About $0.10 per month, the same order as an S3 bucket"
+          ],
+          "answer": 0,
+          "why": "The dollar a month is why one key per client or per matter is affordable; requests are about $0.03 per 10,000 after 20,000 free each month. AWS managed keys have no monthly fee but give you no control, and an S3 bucket itself costs nothing to exist, which is why the cents-per-month guess is tempting."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.kms.e1",
+          "prompt": "Explain envelope encryption and why you would give a client a customer managed key instead of relying on SSE-S3.",
+          "seconds": 120,
+          "modelAnswer": "Envelope encryption separates the key that protects data from the key that protects keys. KMS only encrypts 4 KB directly, so for a document I call `GenerateDataKey`: KMS returns a fresh 256-bit data key in plaintext and the same key encrypted under the customer managed key. I encrypt the document locally with AES-GCM, write the encrypted data key alongside the ciphertext, and drop the plaintext key from memory. Reading reverses it: `Decrypt` the small blob, then decrypt the object. S3 does exactly this per object with SSE-KMS. SSE-S3 also envelope-encrypts, but with keys Amazon owns and rotates; nobody can audit or revoke them, so it satisfies the at-rest checkbox and nothing else. A customer managed key gives a law firm or Fortune 100 client three things they ask for: control, through a key policy they can read and an off switch, since disabling the key makes every object unreadable within minutes; evidence, because each `Decrypt` is a CloudTrail event with the principal and the encryption context, say the matter id; and separation, one key per client so a mistake in one tenant's role cannot decrypt another's data. Cost is about a dollar a month per key plus cents per ten thousand calls, less with S3 Bucket Keys.",
+          "rubric": [
+            "Explains data key vs KMS key and the 4 KB limit",
+            "Describes GenerateDataKey, local encryption, storing the encrypted data key",
+            "Contrasts SSE-S3 (AWS-owned keys) with SSE-KMS and a CMK",
+            "Names control/revocation, auditability, and tenant separation",
+            "Mentions encryption context or CloudTrail evidence",
+            "Mentions cost order of magnitude"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.kms.s1",
+          "situation": "A Fortune 100 client's CISO writes: 'We must be able to revoke your firm's access to our data within minutes, without your cooperation, and prove afterwards who decrypted what.' Documents will live in S3 in your firm's AWS account, processed by the ECS agent service. Legal wants an answer in the proposal this week.",
+          "question": "What architecture do you propose?",
+          "options": [
+            {
+              "text": "A customer managed KMS key in the client's own AWS account, with a key policy granting your task role `kms:Decrypt` and `kms:GenerateDataKey` under a `kms:ViaService` condition and an encryption context per matter; S3 SSE-KMS with that key; CloudTrail in their account records every decrypt.",
+              "verdict": "best",
+              "why": "The client owns the key, so disabling it or editing the key policy revokes access instantly without your involvement, and the CloudTrail decrypt events with encryption context are the proof they asked for."
+            },
+            {
+              "text": "A customer managed key in your firm's account, dedicated to this client, with the client given read access to CloudTrail for that key.",
+              "verdict": "ok",
+              "why": "Good separation and audit, but revocation still depends on your firm acting; the CISO explicitly asked for independence."
+            },
+            {
+              "text": "SSE-S3 default encryption plus a bucket policy restricted to the task role, with S3 server access logs enabled.",
+              "verdict": "bad",
+              "why": "SSE-S3 keys are AWS-owned; the client cannot see, control or revoke them, and bucket policies are controlled by your firm, not by them."
+            },
+            {
+              "text": "Client-side encryption in the agent with an AES key stored in Secrets Manager, shared with the client so they can rotate it.",
+              "verdict": "bad",
+              "why": "A shared static key has no per-decrypt audit trail and rotation by the client does not revoke copies already loaded in your service; it is weaker than KMS on every axis they named."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aws.observability",
+      "title": "CloudWatch and CloudTrail",
+      "tease": "CloudTrail logged nothing when someone downloaded 40,000 privileged files. Why not?",
+      "lesson": {
+        "body": "**CloudWatch Logs**: a log group holds streams and owns retention, KMS key and access. Default retention is *never expire*, so every ECS log group you forget is a growing bill; set `retention_in_days` (1 to 3,653) and note deletion lags expiry by up to 72 hours. The *Infrequent Access* log class halves the ingestion price but drops metric filters, subscription filters, Live Tail and the Embedded Metric Format, so it is for forensics, not alerting; the class is fixed at creation. A log event may be up to 1 MB (raised from 256 KB on 2 April 2025); a `PutLogEvents` batch is also capped at 1 MB. Metric filters turn log patterns into metrics; subscription filters stream to Lambda, Firehose or Kinesis, which is how logs reach OpenSearch, familiar if you have run Kafka Connect into Elasticsearch. Logs Insights is the query language.\n\n**Metrics** live in namespaces with dimensions. Standard resolution is one data point per minute, high resolution one per second. Custom metrics go in via `PutMetricData` or, cheaper, the Embedded Metric Format printed as JSON into logs. Container Insights adds ECS task CPU, memory and restart counts.\n\n**Alarms** have three states: `OK`, `ALARM`, `INSUFFICIENT_DATA`. You set a period, evaluation periods and *datapoints to alarm* (M out of N) to survive one noisy minute. *Treat missing data* matters: the default `missing` goes to `INSUFFICIENT_DATA`; use `notBreaching` for metrics that only emit on errors and `breaching` for heartbeats. Actions fire only on state transitions; composite alarms combine others to cut noise.\n\n**CloudTrail** answers who did what to the control plane. Management events (`CreateRole`, `PutBucketPolicy`, `RunTask`) are recorded by default; Event history shows 90 days per region free, and one trail's copy of management events to S3 is free. Delivery averages about five minutes, not guaranteed. **Not recorded by default**: data events (S3 `GetObject`, Lambda `Invoke`, DynamoDB item reads), which cost extra and are enabled per resource. **Never recorded**: SQL inside RDS, OS activity, your application's behaviour. Enable log file validation so digest files prove the trail was not tampered with.",
+        "snippet": "resource \"aws_cloudwatch_log_group\" \"agent\" {\n  name              = \"/ecs/ediscovery-agent\"\n  retention_in_days = 90                 # default is never expire\n  kms_key_id        = aws_kms_key.logs.arn\n}\n\nresource \"aws_cloudwatch_metric_alarm\" \"tasks_down\" {\n  alarm_name          = \"ediscovery-agent-running-tasks\"\n  namespace           = \"ECS/ContainerInsights\"\n  metric_name         = \"RunningTaskCount\"\n  dimensions          = { ClusterName = var.cluster, ServiceName = var.service }\n  statistic           = \"Minimum\"\n  period              = 60\n  evaluation_periods  = 3\n  datapoints_to_alarm = 2                # 2 of 3: survive one noisy minute\n  comparison_operator = \"LessThanThreshold\"\n  threshold           = var.desired_count\n  treat_missing_data  = \"breaching\"      # silence from a heartbeat metric is bad\n  alarm_actions       = [aws_sns_topic.oncall.arn]\n}\n\n# CloudTrail: S3 object-level reads on the document bucket are NOT logged\n# unless a data-event selector for arn:aws:s3:::firm-a-privileged-docs/ exists.",
+        "snippetLang": "hcl",
+        "source": { "title": "CloudTrail concepts: management, data and Insights events", "url": "https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-concepts.html" }
+      },
+      "cards": [
+        {
+          "id": "aws.observability.c1",
+          "type": "mc",
+          "prompt": "You create a CloudWatch log group without setting retention. How long are events kept?",
+          "options": [
+            "Forever (never expire)",
+            "30 days",
+            "90 days",
+            "14 days"
+          ],
+          "answer": 0,
+          "why": "Never-expire is the default, and storage is billed per GB-month indefinitely, which is why a module should default `retention_in_days`. 90 days is the CloudTrail Event history window, a frequent mix-up."
+        },
+        {
+          "id": "aws.observability.c2",
+          "type": "mc",
+          "prompt": "Which of these does a newly created CloudTrail trail record by default?",
+          "options": [
+            "Management events such as `PutBucketPolicy` and `RunTask`",
+            "S3 object-level `GetObject` calls",
+            "Lambda function invocations",
+            "SQL statements executed against RDS"
+          ],
+          "answer": 0,
+          "why": "Only management (control-plane) events are on by default. S3 object and Lambda invoke activity are data events you must enable per resource at extra cost, and RDS SQL is never captured by CloudTrail."
+        },
+        {
+          "id": "aws.observability.c3",
+          "type": "mc",
+          "prompt": "You alarm on an ALB `HTTPCode_Target_5XX_Count` metric that only emits data points when errors occur. Which `treat_missing_data` setting avoids false INSUFFICIENT_DATA or ALARM states?",
+          "options": [
+            "`notBreaching`",
+            "`breaching`",
+            "`missing`",
+            "`ignore`"
+          ],
+          "answer": 0,
+          "why": "No data means no errors, so missing should count as good. `breaching` would page you for silence, and the default `missing` flips the alarm to INSUFFICIENT_DATA whenever the service is healthy."
+        },
+        {
+          "id": "aws.observability.c4",
+          "type": "tf",
+          "prompt": "Without creating a trail, you can still view the last 90 days of management events in CloudTrail Event history at no charge.",
+          "answer": true,
+          "why": "Event history is per region, management events only, and not affected by trail configuration. Anything older, any data events, or cross-region aggregation needs a trail or CloudTrail Lake."
+        },
+        {
+          "id": "aws.observability.c5",
+          "type": "cloze",
+          "prompt": "A CloudWatch alarm is always in one of three states: `OK`, `ALARM` or `___`.",
+          "answer": "INSUFFICIENT_DATA",
+          "why": "INSUFFICIENT_DATA means not enough data points in the evaluation range, and it is the default outcome for missing data; it is also how alarms start right after creation."
+        },
+        {
+          "id": "aws.observability.c6",
+          "type": "mc",
+          "prompt": "What is the granularity of a standard-resolution CloudWatch metric?",
+          "options": [
+            "One data point per minute",
+            "One data point per second",
+            "One data point every five minutes",
+            "One data point every ten seconds"
+          ],
+          "answer": 0,
+          "why": "Standard is 60 seconds; high-resolution custom metrics go down to 1 second and allow 10 or 30 second alarm periods. Five minutes is the old basic monitoring interval for EC2, not the metric resolution."
+        },
+        {
+          "id": "aws.observability.c7",
+          "type": "tf",
+          "prompt": "CloudTrail delivers events to the trail's S3 bucket in near real time, within seconds of the API call.",
+          "answer": false,
+          "why": "AWS documents an average of about five minutes, with no guarantee. For immediate reaction you route events through EventBridge; for forensics you accept the lag."
+        },
+        {
+          "id": "aws.observability.c8",
+          "type": "cloze",
+          "prompt": "Since April 2025 a single CloudWatch Logs event can be up to ___ MB, up from 256 KB.",
+          "answer": "1",
+          "why": "This matters for agent traces: a full LLM prompt and tool-call transcript used to be truncated or split at 256 KB. The batch limit of 1 MB (plus 26 bytes per event) still applies."
+        }
+      ],
+      "explain": [
+        {
+          "id": "aws.observability.e1",
+          "prompt": "What does CloudTrail record, what does it not record, and how would you prove to a law firm who accessed a specific document?",
+          "seconds": 120,
+          "modelAnswer": "CloudTrail records API activity against AWS. Management events, the control plane, like `CreateRole`, `PutBucketPolicy`, `RunTask`, are on by default, visible for 90 days in Event history and delivered to S3 by a trail at roughly five-minute latency, with digest files for integrity validation. What it does not record by default is the data plane: S3 object reads and writes, Lambda invocations, DynamoDB item operations. Those are data events, opt-in per resource and charged separately. It never records what happens inside a database engine, inside an OS, or inside your application. So, to prove who accessed a document, I need S3 data events enabled on that bucket before the access happened; then every `GetObject` carries the principal ARN, the source IP, the user agent and, if a task role was used, the ECS task ARN in the session context. If the object is SSE-KMS encrypted, the matching `kms:Decrypt` event with its encryption context is a second, independent record. If data events were not enabled, I say so plainly and offer weaker evidence: S3 server access logs if they were on, application logs. Then I turn data events on for the privileged buckets so the question is answerable next time.",
+          "rubric": [
+            "Management events on by default; 90-day Event history",
+            "Data events (S3 object, Lambda, DynamoDB) off by default and billed",
+            "Names what CloudTrail never records (DB queries, OS, app behaviour)",
+            "Explains what a GetObject data event contains",
+            "Uses KMS decrypt events as corroboration",
+            "Honest about gaps and fixes them going forward"
+          ]
+        },
+        {
+          "id": "aws.observability.e2",
+          "prompt": "Design alerting for an agentic service running on ECS Fargate. Which signals, what alarm settings, and how do you avoid waking people for nothing?",
+          "seconds": 120,
+          "modelAnswer": "Three layers. Platform: ECS `RunningTaskCount` below desired for two of three one-minute periods, `CPUUtilization` and `MemoryUtilization` above eighty percent for five periods, and deployment circuit-breaker rollback events via EventBridge. Dependencies: ALB `HTTPCode_Target_5XX_Count` and p99 `TargetResponseTime`, Bedrock throttling and latency, and queue depth on the dead-letter queue if we use SQS. Business: metrics I emit from code with the Embedded Metric Format, such as tool-call failures, tokens per request and documents processed, plus a metric filter on a log pattern like `PrivilegeFilterBypassed` that must stay at zero. Settings: one-minute period with M-of-N, say 3 of 5, so one noisy minute does not page; `treat_missing_data = notBreaching` for error counts that only emit on errors, `breaching` for the heartbeat metric because silence there means we are down. Composite alarms combine 5XX high AND running tasks low into a single page, while the individual alarms go to a ticket queue. Log groups get 90-day retention and a KMS key, with Logs Insights saved queries for on-call. And one alarm nobody forgets on a consulting budget: an AWS Budgets alert on the account, because an agent in a retry loop burns Bedrock tokens faster than CPU.",
+          "rubric": [
+            "Covers platform, dependency and business-level signals",
+            "Uses M-of-N datapoints and explains why",
+            "Chooses treat_missing_data deliberately per metric type",
+            "Uses composite alarms or routing to reduce noise",
+            "Mentions custom metrics (EMF or metric filters) for agent-specific behaviour",
+            "Mentions cost or budget alerting"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "aws.observability.s1",
+          "situation": "A partner at a law-firm client asks you to confirm, in writing, that nobody outside the project team downloaded privileged documents from the matter bucket in the last six months. The account has a multi-region trail logging management events to S3, S3 server access logging was never enabled, and the bucket uses SSE-KMS with a customer managed key.",
+          "question": "What do you tell the partner?",
+          "options": [
+            {
+              "text": "Explain that object-level reads were not being recorded because S3 data events were never enabled, so a complete answer is impossible; offer the KMS `Decrypt` events in CloudTrail (management events, recorded) as strong partial evidence of who decrypted objects, and enable S3 data events on the bucket today.",
+              "verdict": "best",
+              "why": "Honesty about the evidence gap protects the firm and the client; the KMS decrypt trail is real corroboration because every SSE-KMS read needs a decrypt. Enabling data events now makes the next request answerable."
+            },
+            {
+              "text": "Query CloudTrail Event history for the bucket name and report that no suspicious events appear.",
+              "verdict": "ok",
+              "why": "Event history only holds 90 days of management events; an absence of `GetObject` entries there proves nothing because those were never logged."
+            },
+            {
+              "text": "Write that CloudTrail shows no unauthorised access, since the trail has been running for over a year.",
+              "verdict": "bad",
+              "why": "The trail recorded no object-level activity at all, so the statement is false; a written assurance to a law firm that later proves wrong is a liability for the consultancy."
+            },
+            {
+              "text": "Enable S3 data events, wait a month, and then produce the report for the last six months.",
+              "verdict": "bad",
+              "why": "Data events are not retroactive; the past six months stay unrecorded no matter how long you wait."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "boss": {
+    "questions": [
+      {
+        "id": "aws.boss.1",
+        "prompt": "Walk us through a Terraform setup for this app: a containerised agentic service on ECS Fargate that reads privileged documents from S3 and calls Bedrock, for a law-firm client with dev, staging and prod.",
+        "seconds": 180,
+        "modelOutline": "Accounts and state first: three AWS accounts under Organizations, a state bucket per account with versioning, SSE-KMS and `use_lockfile`, separate state per component. Layout: versioned modules (`network`, `fargate-service`, `iam-workload`) and `envs/{dev,staging,prod}` root modules, each with its own backend key, tfvars and pipeline role. Service module: ECR with immutable tags and scan on push, log group with retention and KMS, task definition with distinct execution and task roles, service with circuit breaker. IAM: task role scoped to the client's bucket prefix and specific Bedrock model ARNs; execution role from the managed policy plus specific secret ARNs; `aws:SourceArn` in trust policies. KMS: a customer managed key per client, key policy enabling IAM, `kms:ViaService`. Secrets never in state: write-only arguments or service-managed passwords. Pipeline: plan on PR with a read-only OIDC role, apply of the saved plan on merge behind approval, `prevent_destroy` on data. Observability: alarms on running tasks and 5XX, CloudTrail S3 data events on document buckets.",
+        "rubric": [
+          "Separate accounts/environments with separate root modules and pipeline roles",
+          "Remote state hardened: versioning, SSE-KMS, native S3 locking, split by component",
+          "Reusable versioned module for ECR + ECS + log group",
+          "Task role vs execution role, scoped least-privilege policies, PassRole/trust conditions",
+          "Customer managed KMS key with key policy and encryption context or ViaService",
+          "Secrets kept out of state (write-only, ephemeral, or service-managed)",
+          "Plan-on-PR, apply-from-pipeline workflow with saved plan and approvals",
+          "CloudTrail data events and CloudWatch alarms included"
+        ]
+      },
+      {
+        "id": "aws.boss.2",
+        "prompt": "A partner at the client asks you to prove which engineers could have read their privileged documents last quarter, and who actually did. What do you check, and what will you have to admit you cannot prove?",
+        "seconds": 180,
+        "modelOutline": "Split 'could' from 'did'. Could: enumerate every principal with a path to `s3:GetObject` on the bucket using IAM Access Analyzer and the policy simulator, including bucket policy grants, the task role, admin roles, and anyone who could `iam:PassRole` or assume those roles; check the KMS key policy too, since no decrypt means no read. Did: S3 data events in CloudTrail for `GetObject` on the bucket prefix, joined with `kms:Decrypt` events and their encryption context; `AssumeRole` events show who was behind a role session, and the ECS task ARN in session context ties reads to deployments. Query with Athena or CloudTrail Lake over the trail's S3 bucket. Admit: if data events were not enabled, object reads were never recorded; Event history alone covers 90 days of management events; CloudTrail cannot see what the application did with the bytes after reading. Close with what you enable so the next answer is complete.",
+        "rubric": [
+          "Separates 'who could' (policy analysis) from 'who did' (event analysis)",
+          "Uses IAM Access Analyzer or policy simulator and includes bucket and KMS key policies",
+          "Knows GetObject evidence requires S3 data events, not default CloudTrail",
+          "Uses KMS Decrypt and AssumeRole events to attribute access to humans and tasks",
+          "Mentions a query path (Athena or CloudTrail Lake) over the trail data",
+          "Honest about the 90-day Event history limit and non-retroactive data events",
+          "Proposes concrete remediation (enable data events, digest validation)"
+        ]
+      }
+    ]
+  }
+}

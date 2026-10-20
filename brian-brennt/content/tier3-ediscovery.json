@@ -1,0 +1,628 @@
+{
+  "tier": {
+    "id": "ediscovery",
+    "name": "Legal tech and eDiscovery",
+    "level": 3,
+    "tease": "Produce one privileged email by mistake and the other side may get to read them all."
+  },
+  "nodes": [
+    {
+      "id": "ediscovery.edrm",
+      "title": "eDiscovery and the EDRM",
+      "tease": "One matter, 30 million documents, 90 days. Where do 73 cents of every dollar go?",
+      "lesson": {
+        "body": "eDiscovery is identifying, preserving, collecting, processing, reviewing and producing electronically stored information (ESI) for litigation, regulatory investigations and internal probes. In US federal court the Federal Rules of Civil Procedure set the frame: **Rule 26(b)(1)** limits discovery to what is relevant and **proportional** to the needs of the case, **Rule 34** governs document requests and the form of production, and **Rule 26(g)** makes the signing attorney certify that a reasonable inquiry was made. A single antitrust or securities matter routinely involves tens of millions of documents from hundreds of custodians: email, Slack and Teams chat, file shares, mobile devices, cloud drives.\n\nThe **EDRM** (Electronic Discovery Reference Model) is the industry's shared vocabulary. Nine stages: Information Governance, Identification, Preservation, Collection, Processing, Review, Analysis, Production, Presentation. It is explicitly iterative, not a waterfall: a hot document found in review sends you back to Identification to add custodians.\n\nTreat it as an ETL pipeline whose destination is a courtroom. Processing is the \"T\": extract text and metadata from native files, OCR scanned images, expand containers (PST, ZIP), **deduplicate** by hash (MD5/SHA-1 over content, or over normalized email fields because mailbox headers differ per custodian), **DeNIST** known system files against the NIST NSRL hash list, thread emails, cluster near-duplicates. Volume typically drops 50-90% before a human reads anything.\n\nThe RAND 2012 study \"Where the Money Goes\" found review consumes roughly **73%** of production cost, processing about 19% and collection about 8%. That is why every AI dollar in this industry targets review, and why your Elasticsearch and Kafka background maps directly: ingestion topics, extraction workers, an inverted index for search terms, an analytics layer on top.",
+        "snippet": "Identification -> Preservation -> Collection -> Processing -> Review -> Analysis -> Production\n     |               |               |             |            |          |            |\n  custodian       legal hold      forensic     hash/dedup   coding    timelines   Bates, load\n  interviews      FRCP 37(e)      image+hash   DeNIST,OCR   R/NR,     entities    files, TIFF\n                                               threading    priv,     clustering  or native,\n                                                            conf.                 redactions\n     AI hooks:                                  ^^^^^^^^^^   ^^^^^^^   ^^^^^^^^\n     entity/custodian discovery                 near-dup,    TAR/CAL,  summaries,\n     from comms graphs                          language ID  LLM 1st   Q&A over\n                                                             pass      corpus\n  Every arrow = a logged, hash-verified transfer (chain of custody)",
+        "snippetLang": "text",
+        "source": {
+          "title": "EDRM Model (Electronic Discovery Reference Model)",
+          "url": "https://edrm.net/wiki/edrm-model/"
+        }
+      },
+      "cards": [
+        {
+          "id": "ediscovery.edrm.c1",
+          "type": "mc",
+          "prompt": "Across a typical eDiscovery production, which stage consumes the largest share of the cost?",
+          "options": ["Collection (forensic imaging of devices and mailboxes)", "Processing (extraction, dedup, OCR)", "Review (humans or machines coding documents)", "Production (imaging, Bates numbering, load files)"],
+          "answer": 2,
+          "why": "RAND's 2012 study put review at roughly 73% of production cost, processing near 19%, collection near 8%. Collection feels expensive because it involves forensics, but it is a one-time per-source cost; review scales with every document that survives culling."
+        },
+        {
+          "id": "ediscovery.edrm.c2",
+          "type": "tf",
+          "prompt": "The EDRM is a strict linear waterfall: once a matter reaches Review, the team never returns to Identification or Collection.",
+          "answer": false,
+          "why": "The EDRM is explicitly iterative. A hot document naming a new custodian or a chat channel nobody preserved sends the team back to Identification and Collection, and the added documents flow through processing and review again."
+        },
+        {
+          "id": "ediscovery.edrm.c3",
+          "type": "cloze",
+          "prompt": "Removing known operating-system and application files by matching their hashes against the NIST National Software Reference Library is called ___.",
+          "answer": "DeNISTing",
+          "why": "DeNISTing strips files like DLLs, fonts and installer payloads that can never be evidence. It is a hash lookup, so it costs almost nothing and routinely removes a large fraction of loose files from a forensic image."
+        },
+        {
+          "id": "ediscovery.edrm.c4",
+          "type": "mc",
+          "prompt": "Which of these is NOT one of the proportionality factors in FRCP 26(b)(1)?",
+          "options": ["The importance of the issues at stake in the action", "The amount in controversy", "Whether the producing party uses technology-assisted review", "The parties' relative access to relevant information"],
+          "answer": 2,
+          "why": "The 2015 amendments list six factors: importance of the issues, amount in controversy, relative access to information, the parties' resources, importance of the discovery to the issues, and whether burden outweighs likely benefit. Review methodology is a reasonable-inquiry question under Rule 26(g), not a proportionality factor."
+        },
+        {
+          "id": "ediscovery.edrm.c5",
+          "type": "mc",
+          "prompt": "Two custodians received the same email, yet a plain file hash does not deduplicate them. Why, and what do processing tools do about it?",
+          "options": ["MD5 collisions are common on email, so tools fall back to SHA-256", "Mailbox-specific headers change the bytes, so tools hash normalized fields (from, to, cc, subject, body, attachment hashes)", "Attachments are stripped at collection, so only bodies can be compared", "Deduplication across custodians is prohibited because each custodian must produce their own copy"],
+          "answer": 1,
+          "why": "Each mailbox stamps its own received times, routing headers and internal IDs, so byte-level hashes differ. Tools compute a dedup key over normalized metadata and body. Cross-custodian (global) dedup is normal and negotiated in the ESI protocol; the all-custodians field records who else held the copy."
+        },
+        {
+          "id": "ediscovery.edrm.c6",
+          "type": "tf",
+          "prompt": "Under FRCP 34 the requesting party may specify the form of production (for example native files versus TIFF images with load files), and a responding party that will not comply must state the form it intends to use.",
+          "answer": true,
+          "why": "Rule 34(b)(1)(C) lets the request specify form; Rule 34(b)(2)(D) requires the responding party to object and state the form it will use. Absent a specification, ESI must be produced as ordinarily maintained or in a reasonably usable form, and never in more than one form."
+        }
+      ],
+      "explain": [
+        {
+          "id": "ediscovery.edrm.e1",
+          "prompt": "Walk me through the EDRM stages for a 30-million-document antitrust matter and tell me where you would put an LLM and where you would not.",
+          "seconds": 120,
+          "modelAnswer": "I start before the matter: information governance decides what exists and how long it lives. Identification finds custodians and sources through interviews and comms-graph analysis; that is a place where an LLM helps summarize interview notes but a human decides scope. Preservation issues legal holds under Rule 37(e). Collection images devices and exports mailboxes with hashes recorded at the moment of collection, and I would not let any model touch this; it must be deterministic and forensically repeatable. Processing is ETL: extraction, OCR, DeNIST, hash dedup, email threading, near-dup clustering. That drops 30 million to perhaps 5 million. Review is where 70-plus percent of cost sits, so this is where the LLM earns its keep: first-pass responsiveness with written criteria, rationale per document, humans on privilege and hot documents, all validated with an elusion sample. Analysis uses the model for summaries and corpus Q&A. Production I keep deterministic again: Bates numbers, load files, redactions and a hash manifest. The rule is simple: models where judgment scales, deterministic code where evidence integrity is at stake.",
+          "rubric": [
+            "Names the stages in order and says the model is iterative",
+            "Collection and production kept deterministic and hash-verified, no LLM",
+            "Processing described concretely (OCR, DeNIST, dedup, threading) with volume reduction",
+            "LLM placed on first-pass review and analysis with humans on privilege",
+            "Mentions validation (elusion/recall sample) as part of the review stage",
+            "Ties cost concentration in review to why AI is aimed there"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "ediscovery.edrm.s1",
+          "situation": "A Fortune 100 client's IT team has just dumped 12 TB of Exchange mailboxes and SharePoint exports into an S3 bucket your team controls. The partner wants reviewers coding documents on Monday because a regulator's production deadline is in six weeks, and asks you to \"just get the documents into the review tool\".",
+          "question": "What do you do first?",
+          "options": [
+            {
+              "text": "Record hashes and chain of custody for every container as received, run processing (extraction, OCR, DeNIST, dedup, threading) and propose search-term culling for the ESI protocol, then load the culled set with family relationships intact.",
+              "verdict": "best",
+              "why": "Processing is where volume drops 50-90% and where defensibility is established. Hashing the containers before anything else proves the data was not altered. Loading un-deduplicated, unthreaded data would multiply review cost and break family-level production."
+            },
+            {
+              "text": "Start processing immediately but load a 50,000-document stratified sample to the review tool on Monday so reviewers can begin calibrating the coding protocol while the rest processes.",
+              "verdict": "ok",
+              "why": "Reasonable and politically smart: the partner sees progress and the coding manual gets tested. The risk is that early codes get made on documents whose duplicates and families arrive later, which must then be reconciled."
+            },
+            {
+              "text": "Embed everything with Bedrock, start LLM responsiveness review on the raw export, and deduplicate afterwards from the model's output.",
+              "verdict": "bad",
+              "why": "You pay model cost on every duplicate and system file, lose the hash-based chain of custody that proves nothing changed, and produce coding that does not respect email families. Any opposing expert would take this apart."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ediscovery.review",
+      "title": "Document review",
+      "tease": "A court just let GenAI make final responsiveness calls. What did the producing party have to show?",
+      "lesson": {
+        "body": "Review is where a human or a model decides, per document, whether it is **responsive** to the requests, **privileged** (attorney-client or work product), **confidential** under the protective order (tiers like Confidential and Highly Confidential - Attorneys' Eyes Only), and which **issues** it touches. Coding happens at the **family** level: an email and its attachments travel together, so you do not produce an attachment while withholding its parent without a reason. Coding propagates across exact duplicates. Redactions remove privileged passages or personal data from otherwise produced documents.\n\nThe economics are layered. **First-pass** review is done by contract attorneys paid per hour or per document, often in low-cost centres. **Second-level** QC and **privilege review** are done by associates and cost many times more. Quality control is statistical: random samples from each coding category, re-reviewed blind, with disagreement rates tracked per reviewer.\n\nGenerative AI entered this stage in 2024: Relativity **aiR for Review** (generally available October 2024) produces a responsiveness call, a written rationale and citations into the document; DISCO **Cecilia Auto Review** (August 2024) and Everlaw's assistant do similar work. The first substantial ruling came in **Schulte v. LinkedIn** (N.D. Cal., June 30, 2026): LinkedIn disclosed in advance that it would cull with 25 search terms, then use aiR for final responsiveness calls with human QC of samples from each category. Plaintiffs demanded elusion estimates, error rates and reviewer counts; the court refused, finding the process reasonable and proportional and repeating that \"discovery on discovery\" requires a specific deficiency, not speculation.\n\nFor you the pattern is familiar: a labeling pipeline with a confusion matrix behind it. The difference is that every label may be examined by an adversary under oath.",
+        "snippet": "{\n  \"docId\": \"CTRL00018234\",\n  \"family\": \"CTRL00018233\",\n  \"responsive\": true,\n  \"privilege\": { \"call\": \"none\", \"basis\": null },\n  \"confidentiality\": \"HIGHLY_CONFIDENTIAL_AEO\",\n  \"issues\": [\"pricing\", \"competitor-contact\"],\n  \"decidedBy\": { \"kind\": \"llm\", \"model\": \"anthropic.claude-...\", \"promptVersion\": \"resp-v7\" },\n  \"rationale\": \"Discusses list prices with a competitor's sales director ...\",\n  \"citations\": [{ \"page\": 2, \"quote\": \"let's align on Q3 pricing\" }],\n  \"qc\": { \"sampled\": true, \"humanAgrees\": true, \"reviewer\": \"u-4471\", \"at\": \"2026-09-14T10:02:11Z\" }\n}",
+        "snippetLang": "json",
+        "source": {
+          "title": "Relativity: aiR for Review generally available (Relativity Fest 2024)",
+          "url": "https://edrm.net/?p=207985"
+        }
+      },
+      "cards": [
+        {
+          "id": "ediscovery.review.c1",
+          "type": "mc",
+          "prompt": "In review platforms, what is a document \"family\" and why does it matter for production?",
+          "options": ["All documents from the same custodian; they must be produced together to show context", "A parent email plus its attachments; coding and production decisions are made so the group stays intact", "Near-duplicate documents clustered by text similarity; coding propagates across them automatically", "Documents sharing a Bates prefix; the prefix identifies the producing party"],
+          "answer": 1,
+          "why": "Families are parent-child relationships from processing (email with attachments, ZIP with contents). ESI protocols typically require producing complete families or slip-sheeting withheld members. Near-duplicates are a separate analytics concept and coding does not propagate across them automatically because they differ."
+        },
+        {
+          "id": "ediscovery.review.c2",
+          "type": "cloze",
+          "prompt": "Documents a party must disclose but wants shielded from competitors are designated under a ___ order, often with tiers such as Confidential and Highly Confidential - Attorneys' Eyes Only.",
+          "answer": "protective",
+          "why": "A protective order under FRCP 26(c) governs who may see produced material. Confidentiality designations are coding decisions made during review and stamped onto produced images, which is why they appear next to responsiveness and privilege on the coding panel."
+        },
+        {
+          "id": "ediscovery.review.c3",
+          "type": "tf",
+          "prompt": "In Schulte v. LinkedIn (N.D. Cal. 2026) the court ordered LinkedIn to disclose the elusion rate and document error rate of its Relativity aiR review because generative AI is novel.",
+          "answer": false,
+          "why": "The court denied those requests. LinkedIn's advance disclosure of its 25 search terms, its use of aiR for responsiveness and its human QC of samples satisfied the ESI order; plaintiffs had to show a specific production deficiency, not speculate. The court treated GenAI review much like established TAR."
+        },
+        {
+          "id": "ediscovery.review.c4",
+          "type": "mc",
+          "prompt": "Which element of LinkedIn's process in Schulte was central to defeating the plaintiffs' demand for an AI audit?",
+          "options": ["LinkedIn agreed to produce its prompts as part of the ESI protocol", "LinkedIn disclosed its AI use and search terms up front and ran human QC on samples from each responsiveness category", "LinkedIn had a Special Master validate the model before review began", "LinkedIn achieved a recall above 90% on a control set"],
+          "answer": 1,
+          "why": "Transparency about the method, negotiated through the ESI order, plus human sampling QC, is what the court found reasonable. Prompts were not disclosed; commentators advise treating them as work product. No recall number was litigated."
+        },
+        {
+          "id": "ediscovery.review.c5",
+          "type": "mc",
+          "prompt": "You are designing QC for an LLM first-pass responsiveness review. Which design is most defensible?",
+          "options": ["Re-review every document the model marked non-responsive with a second model", "Draw random samples from each coding category (responsive, non-responsive) and have an attorney re-code them blind, tracking disagreement", "Re-review only documents where the model's self-reported confidence was below 0.7", "Spot-check the model's written rationales for coherence and stop when they read well"],
+          "answer": 1,
+          "why": "Blind random samples per category is how Broiler Chicken and Schulte-style processes measure error and support an elusion estimate. Confidence-threshold review is useful triage but is not a statistical estimate; a second model inherits correlated errors; rationale coherence is not accuracy."
+        },
+        {
+          "id": "ediscovery.review.c6",
+          "type": "tf",
+          "prompt": "Privilege review is normally the first task handed to the cheapest tier of contract reviewers because it is a simple yes/no call.",
+          "answer": false,
+          "why": "Privilege calls depend on legal judgment about who is counsel, whether advice was legal or business, and whether a forward broke confidentiality. They are typically done or QC'd by associates, which is why privilege review is the most expensive line in the review budget."
+        }
+      ],
+      "explain": [
+        {
+          "id": "ediscovery.review.e1",
+          "prompt": "How would you design a first-pass review workflow that combines an LLM with human reviewers, and what would you log for every document?",
+          "seconds": 120,
+          "modelAnswer": "I would start from the review protocol the attorneys write anyway, the coding manual, and turn it into versioned criteria the model receives with each document. Before scale, I calibrate: a few hundred documents coded by the case team, run through the prompt, disagreements examined, prompt revised, repeat until agreement is stable. Then first pass runs on the culled population with the model returning a responsiveness call, a short rationale and citations into the text. Anything hitting privilege indicators, attorney names and domains, legal terms, goes to attorneys regardless of the model's view. Humans then QC blind random samples from each coding bucket, and an elusion sample from the non-responsive pile gives us the recall estimate before anything is produced. Per document I log the document hash, prompt version, model identifier and parameters, raw output, the final coding and who or what made it, every change with a timestamp, and whether it fell into a QC sample and what the human said. That log is what lets us answer a Schulte-style challenge with evidence instead of assurances, and the same records feed the privilege log.",
+          "rubric": [
+            "Criteria derived from the coding manual and versioned",
+            "Calibration loop on a human-coded set before scale",
+            "Rationale and citations captured per document",
+            "Privilege indicators route to humans irrespective of model output",
+            "Blind sampled QC per category plus elusion sample before production",
+            "Per-document audit record lists hash, prompt/model version, output, coding history, QC result"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "ediscovery.review.s1",
+          "situation": "After culling, a law-firm client has 4 million documents and a rolling production starting in three weeks. The budget covers twenty contract reviewers, who can code about 50 documents an hour each. The lead partner has heard about Relativity aiR and asks whether you can \"turn the AI on and send the reviewers home\".",
+          "question": "What do you recommend?",
+          "options": [
+            {
+              "text": "Use the LLM for first-pass responsiveness after a calibration round on attorney-coded samples, keep attorneys on privilege, hot documents and QC sampling, run an elusion test before each production wave, and disclose the method in the ESI protocol.",
+              "verdict": "best",
+              "why": "Twenty reviewers manage roughly 160,000 documents a week; 4 million is impossible by hand in three weeks. The hybrid design is what Schulte v. LinkedIn accepted: AI calls plus human QC, disclosed up front. Privilege stays with attorneys because a missed privileged document is the costliest error."
+            },
+            {
+              "text": "Run continuous active learning with the twenty reviewers so the system surfaces likely-responsive documents first, and negotiate a longer production schedule with opposing counsel.",
+              "verdict": "ok",
+              "why": "CAL is well accepted and reviewers see the most important documents first, but the throughput problem remains and you are relying on the other side agreeing to delay. It is a sound fallback if the client will not accept GenAI review."
+            },
+            {
+              "text": "Let the model decide responsiveness, privilege and confidentiality for all 4 million documents and produce whatever it marks responsive and not privileged, keeping two reviewers for questions.",
+              "verdict": "bad",
+              "why": "No calibration, no sampling, no recall estimate and machine-only privilege calls. One privileged document produced is a waiver fight, and when the opposing party asks how you validated, there is nothing to show."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ediscovery.tar",
+      "title": "TAR and CAL",
+      "tease": "In 2011 two researchers showed humans miss most relevant documents. Courts listened.",
+      "lesson": {
+        "body": "**Technology-assisted review** (TAR) uses a classifier trained on attorney coding decisions to rank or code the rest of the collection. Grossman and Cormack's 2011 Richmond JOLT study on TREC Legal Track data showed TAR could match or beat exhaustive manual review on recall and precision at a fraction of the effort.\n\n**TAR 1.0** (simple active or passive learning): a subject-matter expert codes a **seed set**, a random **control set** measures performance, training rounds continue until the model **stabilizes**, then the model ranks everything and the team reviews above a cutoff. Weaknesses: the SME bottleneck, the control set must be re-drawn when new documents arrive, and the cutoff is a one-time bet.\n\n**TAR 2.0 / Continuous Active Learning** (Cormack and Grossman, SIGIR 2014): the model retrains after every batch and keeps serving the documents most likely to be relevant. No control set, any reviewer can train it, and rolling collections are fine. You stop when batches turn up almost nothing new and an elusion sample confirms it. Under the hood these are linear classifiers (SVM or logistic regression) on bag-of-words or latent semantic features: fast, explainable, deterministic given the same training data.\n\nThe case law: **Da Silva Moore v. Publicis Groupe** (S.D.N.Y. 2012) was the first opinion approving TAR. **Rio Tinto v. Vale** (S.D.N.Y. 2015) called it \"black letter law\" that courts will permit a producing party to use TAR. **Hyles v. New York City** (S.D.N.Y. 2016) held the reverse does not follow: a requesting party cannot force TAR on an unwilling producer, because under **Sedona Principle 6** the responding party chooses its own reasonable methods.\n\nLLM review is the third generation: no training labels, written criteria instead, a rationale per document, far higher cost per document, and exactly the same validation burden.",
+        "snippet": "# CAL loop, stripped to its logic\nwhile True:\n    batch = top_k(model.score(unreviewed), k=200)   # most likely relevant first\n    labels = reviewers.code(batch)                    # humans train by reviewing\n    training += zip(batch, labels)\n    model.fit(training)                               # retrain every batch\n    hit_rate = sum(labels) / len(labels)\n    if hit_rate < 0.02 for several consecutive batches:\n        if elusion_sample(unreviewed, n=2400).responsive_rate() is acceptable:\n            break                                     # stop; estimate recall",
+        "snippetLang": "python",
+        "source": {
+          "title": "The Sedona Conference TAR Case Law Primer, Second Edition (2023)",
+          "url": "https://thesedonaconference.org/sites/default/files/publications/Tar-Case-Law-Primer-2nd-Edition-2023.pdf"
+        }
+      },
+      "cards": [
+        {
+          "id": "ediscovery.tar.c1",
+          "type": "mc",
+          "prompt": "What is the defining operational difference between TAR 1.0 and continuous active learning (CAL)?",
+          "options": ["CAL uses deep neural networks while TAR 1.0 uses keyword expansion", "CAL retrains after every reviewed batch and needs no control set or stabilization point, so new documents can be added mid-review", "CAL requires a single subject-matter expert to code every training document", "CAL guarantees a fixed recall level set before review begins"],
+          "answer": 1,
+          "why": "CAL is a relevance-feedback loop: review the top-ranked batch, retrain, repeat until returns diminish. TAR 1.0 front-loads SME training against a control set, then applies a one-time cutoff, which breaks when collections roll in. Both use linear classifiers; neither guarantees recall without measuring it."
+        },
+        {
+          "id": "ediscovery.tar.c2",
+          "type": "tf",
+          "prompt": "Hyles v. New York City (S.D.N.Y. 2016) held that a requesting party can compel the responding party to use TAR instead of keyword search because TAR is more accurate.",
+          "answer": false,
+          "why": "Judge Peck agreed TAR was probably better but held the court cannot force it on an unwilling party. Sedona Principle 6 leaves the responding party to choose its own reasonable methods; the remedy for a bad choice is a showing of production deficiency afterwards."
+        },
+        {
+          "id": "ediscovery.tar.c3",
+          "type": "cloze",
+          "prompt": "Rio Tinto v. Vale (S.D.N.Y. 2015) declared it ___ that where the producing party wants to use TAR for document review, courts will permit it.",
+          "answer": "black letter law",
+          "why": "Three years after Da Silva Moore, Rio Tinto said the question of whether TAR is allowed was settled and shifted attention to how transparent the process must be, especially seed sets and validation. A candidate who still frames TAR as controversial sounds a decade out of date."
+        },
+        {
+          "id": "ediscovery.tar.c4",
+          "type": "mc",
+          "prompt": "What did Grossman and Cormack's 2011 study establish that gave courts comfort with TAR?",
+          "options": ["That keyword search finds about 20% of relevant documents, so any machine learning is an improvement", "That TAR can be at least as effective as exhaustive manual review on recall and precision while reviewing far fewer documents", "That TAR is only reliable above 50% richness", "That a seed set of 2,000 documents is sufficient for any matter"],
+          "answer": 1,
+          "why": "Using TREC 2009 Legal Track data they showed exhaustive manual review is not a gold standard: human assessors missed many relevant documents and a human-plus-ranking process did as well or better. The 20% keyword figure is from the older Blair and Maron study, often misattributed."
+        },
+        {
+          "id": "ediscovery.tar.c5",
+          "type": "mc",
+          "prompt": "In a CAL review, which signal most defensibly tells you it is time to stop?",
+          "options": ["The model's confidence exceeds 0.9 for every remaining document", "A control set's F1 score has stabilized across three training rounds", "The relevance rate of successive batches has fallen near zero and a random elusion sample of the unreviewed set confirms few responsive documents remain", "The team has reviewed a round number of documents agreed in the budget"],
+          "answer": 2,
+          "why": "CAL has no control set, so stopping rests on diminishing returns confirmed by an elusion sample, which also yields the recall estimate courts ask for. Model confidence is not calibrated against truth, and budget milestones are not a reasonable-inquiry argument."
+        },
+        {
+          "id": "ediscovery.tar.c6",
+          "type": "tf",
+          "prompt": "Because an LLM writes a rationale for each coding decision, LLM-based review removes the need for statistical validation of recall.",
+          "answer": false,
+          "why": "A rationale is an explanation, not evidence of accuracy, and can be fluent while wrong. Relativity, Sedona-aligned commentators and the Schulte process all keep sampling-based validation; Relativity's own roadmap includes built-in statistical validation for generative AI review."
+        }
+      ],
+      "explain": [
+        {
+          "id": "ediscovery.tar.e1",
+          "prompt": "Explain the difference between TAR 1.0, continuous active learning and LLM-based review, and tell me when you would choose each.",
+          "seconds": 120,
+          "modelAnswer": "All three avoid eyes-on review of every document; they differ in how the decision function is built. TAR 1.0 is supervised learning with a ceremony: an expert codes a seed set, a random control set measures the model, you train until it stabilizes, then rank and review above a cutoff. It works when the collection is fixed and you have an expert's time, but rolling collections and the SME bottleneck hurt. CAL is the same kind of classifier, usually linear over text features, but retrained after every batch and always serving the most likely relevant documents; any reviewer trains it just by reviewing, you stop on diminishing returns plus an elusion sample. It is the workhorse of the last decade and courts know it. LLM review replaces training labels with written criteria from the coding manual and returns a call with a rationale, which handles nuanced or multi-issue requests well at a much higher per-document cost. I would use CAL for prioritizing a large homogeneous collection on a tight budget, LLM review where criteria are nuanced or the team has no training bandwidth, and in both cases the same validation: blind samples and a recall estimate. For privilege, humans decide.",
+          "rubric": [
+            "TAR 1.0: seed set, control set, stabilization, cutoff; weakness with rolling data",
+            "CAL: retrain per batch, no control set, any reviewer trains, stop on diminishing returns plus elusion sample",
+            "LLM review: criteria instead of labels, rationale per document, higher cost per document",
+            "Gives a concrete choice rule for each",
+            "States validation burden is identical across all three",
+            "Keeps privilege decisions with humans"
+          ]
+        }
+      ],
+      "scenarios": []
+    },
+    {
+      "id": "ediscovery.validation",
+      "title": "Recall, precision, elusion",
+      "tease": "An 85% recall claim is fiction if your elusion sample skipped the wrong pile.",
+      "lesson": {
+        "body": "Courts evaluate a production the way you evaluate a classifier, with one bias: **recall matters more than precision**. Low precision costs the producing party money; low recall deprives the other side of evidence. The Sedona primer records special masters treating precision as relatively less important than recall.\n\n**Recall** = responsive documents found / all responsive documents. **Precision** = responsive found / everything you called responsive. **Richness** (prevalence) = share of the collection that is responsive. **Elusion** = share of the discarded set (the null set) that is actually responsive, measured by having an attorney blind-code a random sample of it. Nobody knows the true total, so recall is estimated: recall ≈ R_found / (R_found + elusion × N_null).\n\nSample size is driven by confidence and margin, not population: 95% confidence with ±2% margin needs about **2,400** documents, ±5% about 385. The gotcha is low richness: if only 1% of the null set is responsive, a ±2% margin on elusion becomes a huge interval on recall. You need bigger samples or a design that samples the whole universe, which is what **In re Broiler Chicken** (N.D. Ill., Jan 3, 2018, Magistrate Judge Gilbert, Special Master Maura Grossman) ordered: a blind validation sample of **3,000** documents (500 coded responsive, 500 coded non-responsive by humans, 2,000 unreviewed and excluded by TAR), recall statistics shared with the requesting party along with copies of responsive documents found, and the protocol applies to manual review too.\n\n**In re Diisocyanates** (W.D. Pa. 2021) shows the failure mode: the elusion sample excluded documents that never hit search terms, inflating recall, which the special master found unreasonable under Rule 26(g). Negotiated targets cluster at 75-85%: in **FTC v. Uber** (N.D. Cal., July 2, 2026) the court kept Uber's agreed 75% and ordered 300 non-responsive seed documents produced.",
+        "snippet": "# Recall from an elusion test (all counts are documents)\nR_found    = 400_000        # produced as responsive\nN_null     = 3_000_000      # discarded by TAR/LLM + search-term misses (sample ALL of it)\nn_sample   = 2_400          # 95% conf, +/-2% on elusion\nhits       = 36             # sample docs attorney coded responsive\nelusion    = hits / n_sample            # 0.015\nmissed_est = elusion * N_null           # 45,000\nrecall     = R_found / (R_found + missed_est)   # 0.899\n# Interval: elusion 0.015 +/- 0.005 -> missed 30k..60k -> recall 0.87..0.93\n# Richness 1% instead of 13%? Same +/-2% on elusion could swing recall by 30+ points.",
+        "snippetLang": "python",
+        "source": {
+          "title": "The Sedona Conference TAR Case Law Primer, Second Edition (2023), Section V: Validation",
+          "url": "https://thesedonaconference.org/sites/default/files/publications/Tar-Case-Law-Primer-2nd-Edition-2023.pdf"
+        }
+      },
+      "cards": [
+        {
+          "id": "ediscovery.validation.c1",
+          "type": "mc",
+          "prompt": "What does an elusion test measure?",
+          "options": ["The share of produced documents that were actually non-responsive", "The share of the discarded (null) set that is actually responsive, estimated from a blind random sample of it", "The agreement rate between two reviewers on the same documents", "The fraction of the collection that is responsive before review begins"],
+          "answer": 1,
+          "why": "Elusion is the Sedona Glossary's term for what the search missed, measured on the null set. The first option is precision's complement; the last is richness. Elusion is the ingredient you combine with produced counts to estimate recall."
+        },
+        {
+          "id": "ediscovery.validation.c2",
+          "type": "cloze",
+          "prompt": "At 95% confidence with a ±2% margin of error, a random sample of roughly ___ documents is required, regardless of population size.",
+          "answer": "2,400",
+          "why": "The worst-case formula (p=0.5) gives 2,401; population size barely matters once it exceeds a few hundred thousand. Remember that the margin applies to elusion, and translating ±2% elusion into a recall interval widens dramatically when richness is low."
+        },
+        {
+          "id": "ediscovery.validation.c3",
+          "type": "mc",
+          "prompt": "Why did the special master in In re Diisocyanates (W.D. Pa. 2021) find the defendants' proposed TAR validation unreasonable under Rule 26(g)?",
+          "options": ["They refused to disclose their seed set", "Their elusion sample excluded documents that never hit the search terms, which could overstate recall", "They used CAL instead of TAR 1.0", "Their recall target of 75% was below the court's 85% minimum"],
+          "answer": 1,
+          "why": "Search-term culling removes documents before TAR; if you only sample what TAR saw, misses caused by the terms are invisible and recall is inflated. Later orders, including an Express Scripts dispute, cite Broiler Chicken for sampling the full TAR universe. There is no fixed 85% rule."
+        },
+        {
+          "id": "ediscovery.validation.c4",
+          "type": "tf",
+          "prompt": "When evaluating whether a production was adequate, courts generally treat precision as more important than recall.",
+          "answer": false,
+          "why": "Low precision costs the producer review dollars; low recall deprives the requester of evidence, which is what courts protect. The Sedona primer records special masters saying precision is relatively less important than recall in this context."
+        },
+        {
+          "id": "ediscovery.validation.c5",
+          "type": "mc",
+          "prompt": "What was the composition of the 3,000-document validation sample ordered in In re Broiler Chicken (N.D. Ill. 2018)?",
+          "options": ["3,000 random documents from the produced set only", "1,000 each from responsive, non-responsive and privileged documents", "500 coded responsive, 500 coded non-responsive by humans, and 2,000 unreviewed documents excluded by TAR, all blind-coded by a subject-matter expert", "3,000 documents selected by the requesting party"],
+          "answer": 2,
+          "why": "Sampling all three strata lets the SME's blind calls measure human error as well as machine misses, and the protocol applied to linear review too. The producing party then shared recall statistics and copies of responsive non-produced documents found, so the parties could confer on whether review was substantially complete."
+        },
+        {
+          "id": "ediscovery.validation.c6",
+          "type": "tf",
+          "prompt": "In FTC v. Uber (N.D. Cal., July 2026) the court raised Uber's recall target from 75% to 85% because generative AI makes higher recall inexpensive.",
+          "answer": false,
+          "why": "The court kept the agreed 75% target, citing a production deadline eleven days away, and instead granted a sample of 300 non-responsive, non-privileged seed-set documents. Courts enforce negotiated protocols rather than impose new thresholds late."
+        },
+        {
+          "id": "ediscovery.validation.c7",
+          "type": "cloze",
+          "prompt": "The share of a collection that is actually responsive, which determines how wide your recall interval will be for a given sample, is called ___ (or prevalence).",
+          "answer": "richness",
+          "why": "Low richness is the enemy of cheap validation: a ±2% elusion margin on a 1%-rich null set can swing the recall estimate by tens of points, so protocols either raise sample size or sample the entire universe as Broiler Chicken did."
+        }
+      ],
+      "explain": [
+        {
+          "id": "ediscovery.validation.e1",
+          "prompt": "The requesting party challenges our recall estimate for an LLM-assisted production. Walk me through how you computed it and how you would defend it.",
+          "seconds": 120,
+          "modelAnswer": "Our estimate comes from an elusion test on the full null set, meaning everything we did not produce, including documents that never hit search terms, because excluding those is the mistake the special master in Diisocyanates called unreasonable. We drew a random sample of 2,400 documents, which gives 95% confidence and a 2% margin on elusion, and an attorney who did not see the model's output coded them blind. Elusion was 1.5%, so we estimate about 45,000 responsive documents remain in a 3-million-document null set against 400,000 produced, which is roughly 90% recall with an interval of about 87 to 93. We also sampled the produced set to report precision, and we reviewed the responsive documents the sample found: none were new hot documents or new custodians, which matters as much as the number. In defense I would point to the ESI protocol where we disclosed the method, to Broiler Chicken as the shape of the protocol, and to Schulte v. LinkedIn, where disclosure plus sampled QC defeated a demand for an audit. The logs show every sampled document, the coder, and the timestamp. If they want more, the burden is on them to identify a specific deficiency.",
+          "rubric": [
+            "Elusion sample drawn from the entire null set including search-term misses",
+            "Sample size tied to confidence and margin (about 2,400 for 95%/2%)",
+            "Blind coding by someone who did not see model output",
+            "Recall formula and an interval, not a single number",
+            "Qualitative check of what the sample found (hot documents, new custodians)",
+            "Cites ESI protocol disclosure and case law (Broiler Chicken, Schulte, Diisocyanates)"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "ediscovery.validation.s1",
+          "situation": "Your LLM first-pass review is done: 400,000 documents marked responsive, 3 million discarded. The elusion sample of 2,400 finds 36 responsive documents, implying about 90% recall, above the 80% target in the ESI protocol. But three of the 36 are emails between the client's CFO and a competitor that the case team calls \"hot\". The partner wants to certify completeness today.",
+          "question": "What do you advise?",
+          "options": [
+            {
+              "text": "Do not certify yet. Investigate why the three hot documents eluded the model (new custodian, language, vocabulary), adjust the criteria or add search terms, run the affected population again, then re-sample before producing and disclose the found documents per the protocol.",
+              "verdict": "best",
+              "why": "Broiler Chicken explicitly requires conferring on the nature of what the sample found, not just the recall number, and Special Master Grossman warned against treating the percentage as the sole indicator. Three hot documents in 36 is a signal of a systematic gap, and certifying under Rule 26(g) knowing that is indefensible."
+            },
+            {
+              "text": "Produce the current set with the recall statement and the 36 documents, and raise the hot-document pattern in the next meet and confer so both sides can decide whether further review is proportional.",
+              "verdict": "ok",
+              "why": "Transparent and consistent with the protocol, and proportionality is a legitimate argument. But the firm has already spotted a systematic miss, so waiting for the other side to decide looks reactive and may cost credibility later."
+            },
+            {
+              "text": "Treat the three documents as statistical noise since 90% exceeds the 80% target, remove them from the sample as outliers, and certify.",
+              "verdict": "bad",
+              "why": "Altering a random sample destroys its validity and the audit log will show it. If the hot documents surface later through another source, the recall certification becomes evidence of an unreasonable inquiry and possibly of bad faith."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ediscovery.privilege",
+      "title": "Privilege and defensibility",
+      "tease": "Which is worse: withholding a document you should produce, or producing one you should withhold?",
+      "lesson": {
+        "body": "**Attorney-client privilege** protects confidential communications between client and counsel for the purpose of legal advice. **Work product** (FRCP 26(b)(3)) protects material prepared in anticipation of litigation; fact work product can be overcome on substantial need, opinion work product almost never. Neither attaches because a lawyer was copied; both can be lost by forwarding to a third party. In-house counsel giving business advice is not privileged. This is why review tools keep attorney name and domain lists and why privilege calls go to associates.\n\nThe error costs are asymmetric. A **false positive** (over-withholding) means a bloated **privilege log** under Rule 26(b)(5)(A), a motion to compel, possibly in camera review and a credibility hit. A **false negative** (producing a privileged document) risks **waiver**, potentially of the whole subject matter if intentional (FRE 502(a)). Protections exist: FRE 502(b) says inadvertent disclosure is not a waiver if the holder took reasonable steps to prevent it and promptly acted to retrieve it; Rule 26(b)(5)(B) gives the clawback procedure. A **502(d) order** is stronger: the court declares that disclosure in this case does not waive privilege regardless of care. Every ESI protocol should have one, and your validation records are the \"reasonable steps\".\n\n**Chain of custody** is the same discipline applied to the data: hash at collection (MD5 or SHA-256), forensic images, write blockers, custodian, source, collector, date, and a hash re-check at every transfer. Rule 37(e) allows an adverse-inference instruction for lost ESI only on a finding of intent to deprive, so preservation records stand between a client and sanctions.\n\n**Defensibility** means reasonable, documented, repeatable, validated and proportionate. For an AI pipeline that means per-document audit records: document hash, prompt and model version, raw output, final coding, every change with actor and timestamp, QC membership. Think of it as an append-only Kafka topic replayable in front of a judge.",
+        "snippet": "# What the audit trail must be able to answer, per document\n#   WHO/WHAT decided   -> model id + prompt version, or reviewer id\n#   WHEN               -> immutable timestamp\n#   ON WHAT            -> document hash (content), family id, Bates range\n#   WHY                -> rationale text, citations, criteria version\n#   WAS IT CHECKED     -> QC sample id, human decision, disagreement reason\n#   DID IT CHANGE      -> full coding history, never overwritten\n# On AWS: CloudTrail + S3 Object Lock (compliance mode) for the log bucket,\n# Bedrock model invocation logging on, KMS CMK per matter, no delete IAM\n# permission on the audit prefix for anyone, including administrators.",
+        "snippetLang": "text",
+        "source": {
+          "title": "Federal Rule of Evidence 502 (Cornell LII)",
+          "url": "https://www.law.cornell.edu/rules/fre/rule_502"
+        }
+      },
+      "cards": [
+        {
+          "id": "ediscovery.privilege.c1",
+          "type": "mc",
+          "prompt": "What does a Federal Rule of Evidence 502(d) order do?",
+          "options": ["Requires the producing party to prove it took reasonable steps before privilege can be clawed back", "Declares that disclosure of privileged material in the case is not a waiver, regardless of the care taken, and binds other federal and state proceedings", "Allows the court to review all withheld documents in camera", "Waives privilege over the whole subject matter when a document is produced intentionally"],
+          "answer": 1,
+          "why": "502(d) is the strongest protection available and removes the fight over whether steps were reasonable. 502(b) is the reasonable-steps test for inadvertent disclosure; 502(a) is intentional-disclosure subject-matter waiver. Every ESI protocol should request a 502(d) order."
+        },
+        {
+          "id": "ediscovery.privilege.c2",
+          "type": "tf",
+          "prompt": "An email becomes privileged if an attorney is copied on it.",
+          "answer": false,
+          "why": "Privilege requires a confidential communication for the purpose of legal advice. Copying counsel on a business discussion does not qualify, and courts see through it. This is also why machine privilege calls based on attorney name hits are only triage, never the decision."
+        },
+        {
+          "id": "ediscovery.privilege.c3",
+          "type": "cloze",
+          "prompt": "FRCP ___ permits an adverse-inference instruction or default judgment for lost ESI only on a finding that the party acted with intent to deprive another party of the information.",
+          "answer": "37(e)",
+          "why": "The 2015 amendment to Rule 37(e) split remedies: curative measures no greater than necessary upon prejudice, and the severe sanctions only with intent. Documented legal holds and collection hashes are how a client proves ordinary loss was not intentional."
+        },
+        {
+          "id": "ediscovery.privilege.c4",
+          "type": "mc",
+          "prompt": "In privilege review, which error is more damaging and why?",
+          "options": ["Over-withholding, because the privilege log becomes long and expensive", "Producing a privileged document, because it may waive privilege, triggers a clawback fight and the opposing side has already read it", "Both are equivalent since clawback and in camera review fix either", "Over-withholding, because courts fine parties per wrongly logged document"],
+          "answer": 1,
+          "why": "Over-withholding costs money and credibility but is reversible. A produced privileged document cannot be unread; even with a 502(d) order the content has reached the adversary and may guide their strategy. This asymmetry is why the privilege model must be tuned for recall and humans must make the final call."
+        },
+        {
+          "id": "ediscovery.privilege.c5",
+          "type": "mc",
+          "prompt": "Which practice best preserves chain of custody for a mailbox export moving from the client's Exchange environment into your AWS processing pipeline?",
+          "options": ["Compress the export to save transfer time and hash the ZIP on arrival", "Record a cryptographic hash and custodian, source, collector and timestamp at the moment of export, verify the hash at every transfer, and store the record immutably", "Rely on S3 server-side encryption, since encrypted data cannot be altered", "Have the client email a signed statement that the export is complete"],
+          "answer": 1,
+          "why": "A hash taken at the source is the only proof that what you processed is what was collected; hashing on arrival proves nothing about transit. Encryption protects confidentiality, not integrity. Attestations help but are not verifiable."
+        },
+        {
+          "id": "ediscovery.privilege.c6",
+          "type": "tf",
+          "prompt": "Work product protection covers materials prepared in anticipation of litigation, and fact work product can be overcome on a showing of substantial need and inability to obtain the equivalent without undue hardship.",
+          "answer": true,
+          "why": "That is FRCP 26(b)(3)(A). Opinion work product, the attorney's mental impressions and legal theories, is protected far more strongly. A reviewer coding privilege must record the basis (attorney-client, work product or both) because the privilege log and any challenge turn on it."
+        },
+        {
+          "id": "ediscovery.privilege.c7",
+          "type": "cloze",
+          "prompt": "Under FRCP 26(b)(5)(A), a party withholding documents must produce a ___ log describing each item's nature in a way that lets others assess the claim without revealing the protected content.",
+          "answer": "privilege",
+          "why": "Privilege logs are built from metadata (date, author, recipients, document type) plus a description. Generating those descriptions is one of the first privilege tasks vendors gave to LLMs, because the log is high-volume and the attorney still signs off on each entry."
+        }
+      ],
+      "explain": [
+        {
+          "id": "ediscovery.privilege.e1",
+          "prompt": "Why are audit logs non-negotiable in a legal-tech AI pipeline, and what exactly would you log for each LLM review decision?",
+          "seconds": 120,
+          "modelAnswer": "Because in this domain every output may be challenged by an adversary who wants to show our process was unreasonable, and Rule 26(g) makes a lawyer personally certify that it was. Without a record, the only defense is testimony about what we think happened. Audit logs also serve privilege: if a privileged document is produced, FRE 502(b) asks whether we took reasonable steps, and the record of validation, QC and privilege screening is that proof. And when something goes wrong, the log is how we find root cause instead of re-reviewing millions of documents. Per decision I log the document's content hash and family id, the model identifier, parameters and prompt version, the criteria version it received, the raw output including rationale and citations, the final coding and every subsequent change with actor and timestamp, whether the document fell into a QC or elusion sample and what the human decided. The log store is append-only, in our case S3 with Object Lock plus CloudTrail and Bedrock invocation logging, with no delete permission for anyone. The principle from my ERP work applies: payroll has to be re-computable years later, and so does a coding decision.",
+          "rubric": [
+            "Links logs to Rule 26(g) certification and adversarial challenge",
+            "Links logs to FRE 502(b) reasonable-steps defense for privilege",
+            "Logs enable root cause without full re-review",
+            "Lists fields: hash, model/prompt/criteria version, raw output, coding history, QC membership",
+            "Append-only / immutable storage with no delete rights",
+            "Concrete implementation (S3 Object Lock, CloudTrail, Bedrock invocation logging)"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "ediscovery.privilege.s1",
+          "situation": "Two days after a production wave from your Bedrock-based review pipeline, an associate notices a produced email in which the client's general counsel gives litigation advice about the very dispute. The pipeline's privilege screen had marked it non-privileged because the GC wrote from a personal Gmail address not on the attorney domain list. The partner is in a deposition and unreachable for three hours.",
+          "question": "What do you do in those three hours?",
+          "options": [
+            {
+              "text": "Escalate immediately to the next available attorney on the matter so a clawback notice goes out under the 502(d) order and Rule 26(b)(5)(B) today, pull the audit trail for the document, query the production for every other message from that address and any other off-list sender, and prepare a corrective sample.",
+              "verdict": "best",
+              "why": "Promptness is an element of 502(b) and good practice even under a 502(d) order; the clawback is a lawyer's call but must not wait three hours for one partner. The root-cause query turns one miss into a systematic fix, and the audit trail shows the court what happened."
+            },
+            {
+              "text": "Document the finding, fix the attorney list, and brief the partner the moment the deposition ends so they can decide on the clawback.",
+              "verdict": "ok",
+              "why": "Reasonable, and the partner should own the clawback decision. But three hours is time in which more of the production may be read, and nothing stops you from alerting another attorney on the team and running the search for similar misses meanwhile."
+            },
+            {
+              "text": "Replace the document with a slip sheet in the production folder, re-upload the corrected volume, and update the privilege log quietly to avoid alarming the client.",
+              "verdict": "bad",
+              "why": "Silently altering a produced volume is exactly what audit logs exist to expose. The other side already has the file; concealment converts an inadvertent disclosure into a credibility and candor problem and may destroy the 502(b) argument."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ediscovery.platforms",
+      "title": "Platforms and the question to ask",
+      "tease": "Relativity made GenAI review standard in April 2026. What is left for a consultancy to sell?",
+      "lesson": {
+        "body": "Three names dominate the conversation. **Relativity** is the market leader for large matters: **RelativityOne** is its SaaS platform (hosted on Microsoft Azure), Relativity Server the on-premises edition. Its classic analytics are conceptual indexing and **Active Learning** (CAL). Its generative products are **aiR for Review** (GA October 2024: responsiveness call, rationale, citations), **aiR for Privilege** (GA 2025: privilege call with rationale, privilege-log support) and **aiR for Case Strategy**. At Relativity Fest in October 2025 the company announced that aiR for Review and aiR for Privilege become part of standard RelativityOne pricing from **April 1, 2026**, reporting 200+ customers and 25 million documents reviewed, throughput up to 3 million documents a day, and a roadmap item for built-in statistical validation.\n\n**Everlaw** is cloud-native with a reputation for usability, narrative tools (Storybuilder), an AI assistant since 2023 and **Everlaw AI Deep Dive** (March 2026) for conversational analysis across a whole corpus. **DISCO** (NYSE: LAW) launched **Cecilia** in 2023, **Cecilia Auto Review** for GenAI first-pass review in August 2024, and in 2026 announced agentic Cecilia capabilities included at no extra cost.\n\nWhen review AI is table stakes inside the platforms, a consultancy sells what they do not: ingestion of messy sources (Slack, Teams, mobile, structured data), early case assessment and investigations before anything reaches a review platform, integrations through Relativity's REST APIs, and defensible process design: protocols, validation, logs. That is agentic-on-AWS work in a regulated domain.\n\nThe question to ask the interviewer: \"When an LLM makes a responsiveness or privilege call in your pipelines today, how do you validate it statistically, who owns the elusion sample, how are prompts versioned and treated for work product, and what do you disclose in the ESI protocol?\" It shows you know Schulte-era expectations, and the answer tells you how mature their practice is.",
+        "snippet": "Platform      | Review AI (date)                 | Angle for a consultancy\n--------------+----------------------------------+------------------------------------\nRelativityOne | aiR for Review GA Oct 2024       | REST APIs, custom pre-processing,\n(Azure SaaS)  | aiR for Privilege GA 2025        | ECA on AWS before load, protocols\n              | both in standard price Apr 2026  | and validation design\nEverlaw       | AI Assistant 2023                | API, mid-market firms, narrative\n              | AI Deep Dive Mar 2026            | and corpus Q&A\nDISCO (LAW)   | Cecilia 2023, Auto Review Aug 24 | agentic features, pricing pressure,\n              | agentic Cecilia 2026             | smaller firms\nNone of them | ingest Slack/Teams/mobile/ERP data cleanly at scale -> that gap is yours",
+        "snippetLang": "text",
+        "source": {
+          "title": "Relativity Fest 2025: Generative AI Solutions for Legal Review to Be Standard in Cloud Offering",
+          "url": "https://edrm.net/?p=223248"
+        }
+      },
+      "cards": [
+        {
+          "id": "ediscovery.platforms.c1",
+          "type": "mc",
+          "prompt": "Which product was at issue in Schulte v. LinkedIn (N.D. Cal. 2026), the first substantial US ruling on generative AI document review?",
+          "options": ["DISCO Cecilia Auto Review", "Everlaw AI Assistant", "Relativity aiR for Review", "A custom GPT-4 pipeline built by LinkedIn"],
+          "answer": 2,
+          "why": "LinkedIn used Relativity aiR for final responsiveness calls with human sample QC after 25 disclosed search terms. Knowing the vendor matters because clients will ask whether your approach matches what a court has already accepted."
+        },
+        {
+          "id": "ediscovery.platforms.c2",
+          "type": "tf",
+          "prompt": "RelativityOne is a SaaS platform hosted on AWS.",
+          "answer": false,
+          "why": "RelativityOne runs on Microsoft Azure. For an AWS-centric consultancy that means data moving between clouds, with egress cost, encryption and chain-of-custody hashing at each hop, and it is why pre-processing on AWS before load is a realistic engagement shape."
+        },
+        {
+          "id": "ediscovery.platforms.c3",
+          "type": "mc",
+          "prompt": "What changed for Relativity aiR for Review and aiR for Privilege on April 1, 2026?",
+          "options": ["They were withdrawn pending court approval of GenAI review", "They became included in standard RelativityOne pricing rather than a separately priced add-on", "They were rebuilt on open-weights models hosted by customers", "They were limited to US customers only"],
+          "answer": 1,
+          "why": "Announced at Relativity Fest in October 2025. Bundling GenAI review into the platform price removes a per-document upsell and pushes consultancies toward process, integration and non-standard data rather than reselling review AI."
+        },
+        {
+          "id": "ediscovery.platforms.c4",
+          "type": "cloze",
+          "prompt": "DISCO's generative AI assistant, launched in 2023 and extended to first-pass review with Auto Review in 2024, is called ___.",
+          "answer": "Cecilia",
+          "why": "Cecilia started as Q&A over a case database with citations, added document summaries and Auto Review in 2024, and gained agentic capabilities announced in 2026. Naming it correctly signals you have looked at the market, not just the leader."
+        },
+        {
+          "id": "ediscovery.platforms.c5",
+          "type": "mc",
+          "prompt": "Which question to the interviewer best demonstrates eDiscovery awareness for a Senior AI Engineer role?",
+          "options": ["Which LLM provider do you use for review?", "How do you validate LLM review decisions statistically today, who owns the elusion sample, how are prompts versioned and protected as work product, and what is disclosed in the ESI protocol?", "Do your clients prefer Relativity or Everlaw?", "How many documents per day can your pipeline process?"],
+          "answer": 1,
+          "why": "It targets the open issue in the field after Schulte: validation and disclosure of GenAI review. The other questions are legitimate but answerable from a brochure and do not reveal how defensible the firm's practice is."
+        }
+      ],
+      "explain": [
+        {
+          "id": "ediscovery.platforms.e1",
+          "prompt": "You have no legal-tech background. How would you become productive in this domain in your first sixty days?",
+          "seconds": 120,
+          "modelAnswer": "I would treat it the way I learned payroll for the ERP: the rules are written down and the experts are in the building. In the first two weeks I read the EDRM stage definitions, the Sedona TAR Case Law Primer and our own ESI protocol templates, and I sit with a review team for a day to see how coding actually happens in Relativity: families, propagation, privilege calls, the privilege log. Weeks three to six I take one real workflow end to end, probably the validation step, because it is where statistics meet law and where I can contribute immediately: sample design, recall estimation, logging. I would ask the attorneys how they would want to defend a Schulte-style challenge and build the records they would need. By day sixty I want to have shipped one documented improvement, for example a validation report generated automatically from the audit log, and to have a list of what the platforms do not handle well for our clients, such as Slack or mobile data, because that is where our AWS work adds value. And I would ask you now: how do you validate LLM review decisions today, and who owns that process?",
+          "rubric": [
+            "Names concrete sources (EDRM, Sedona primer, ESI protocols)",
+            "Shadows real reviewers to learn coding workflow",
+            "Picks validation/logging as first contribution and explains why",
+            "Frames work in terms of defending a challenge",
+            "Has a measurable sixty-day outcome",
+            "Turns it into a question for the interviewer about validation ownership"
+          ]
+        }
+      ],
+      "scenarios": []
+    }
+  ],
+  "boss": {
+    "questions": [
+      {
+        "id": "ediscovery.boss.1",
+        "prompt": "A partner asks whether we can let an LLM do first-pass privilege review. What do you tell them?",
+        "seconds": 180,
+        "modelOutline": "Yes as a screen and drafting aid, no as the decision-maker. Privilege errors are asymmetric: a produced privileged document cannot be unread and may waive privilege, so the system must be tuned for recall on privilege and a human makes the final call. Describe what the model does well: flag attorney involvement beyond name lists, detect legal advice versus business talk, draft privilege-log descriptions, rank the privilege queue. Describe safeguards: a 502(d) order in the ESI protocol, blind sampled QC of the model's not-privileged calls, attorney-list maintenance including personal addresses, per-document audit logs with prompt and model version. Note that Relativity's aiR for Privilege is positioned as assisting attorneys, that Schulte accepted GenAI responsiveness calls with human QC, and that no court has blessed machine-only privilege decisions. Close with cost: privilege review is the most expensive line, so a screen that cuts attorney time sharply is the business case.",
+        "rubric": [
+          "States the asymmetry: false negative on privilege can waive and cannot be undone",
+          "LLM as screen and drafting aid, human makes the final privilege call",
+          "Names concrete model tasks (flag counsel, legal vs business advice, log descriptions)",
+          "Requires 502(d) order and clawback procedure in the ESI protocol",
+          "Blind sampled QC focused on the not-privileged pile",
+          "Audit logging per document with prompt/model version",
+          "References market or case law context (aiR for Privilege, Schulte, no court approval of machine-only privilege)",
+          "Gives the business case in attorney hours"
+        ]
+      },
+      {
+        "id": "ediscovery.boss.2",
+        "prompt": "Explain to a non-technical partner why our hybrid search is defensible in court.",
+        "seconds": 180,
+        "modelOutline": "No jargon. Start with what courts actually judge: not the algorithm but whether the process was reasonable, documented and validated (Rule 26(g), Sedona Principle 6), and Rio Tinto made clear that technology choice belongs to the producing party. Explain hybrid search as two independent nets: keyword matching that is exact and reproducible, and meaning-based matching that catches synonyms, misspellings and code words the keyword list missed; the union finds more than either alone, and recall is what courts care about. Then the proof: an attorney blind-codes a random sample of the discarded pile, we report the recall estimate and interval, and we keep a record of every search, model version and sample so the process can be repeated; we pin the embedding model version and keep the keyword path as the reproducible baseline. Note Schulte: disclose the method up front and courts will not let the other side audit without a specific deficiency.",
+        "rubric": [
+          "Frames defensibility as reasonable, documented, validated process, not algorithm choice",
+          "Cites producing party's choice of method (Principle 6 / Rio Tinto) in plain words",
+          "Explains keyword and semantic search as complementary nets improving recall",
+          "Explains validation via blind elusion sample and recall estimate",
+          "Addresses reproducibility: pinned model versions, logged queries and samples",
+          "Mentions up-front disclosure in the ESI protocol and the Schulte posture on audits",
+          "Avoids technical jargon throughout"
+        ]
+      },
+      {
+        "id": "ediscovery.boss.3",
+        "prompt": "Walk me through how you would validate and document an LLM responsiveness review so it survives a motion to compel.",
+        "seconds": 180,
+        "modelOutline": "Begin before review: negotiate the ESI protocol to disclose AI use, culling terms, QC design and a recall target, and request a 502(d) order. Calibrate the prompt on an attorney-coded set and freeze the criteria version. During review, log per document the hash, model and prompt version, output with rationale, coding history and QC membership in append-only storage. At the end, run an elusion sample across the entire null set including search-term misses, about 2,400 documents for 95% confidence and 2% margin, blind-coded by an attorney; compute recall with an interval; review the documents the sample finds for hot documents or new custodians, as Broiler Chicken requires. Produce a validation report from the logs. If challenged, show the disclosure, the protocol, the sample and the numbers; cite Schulte on discovery-on-discovery and Diisocyanates as the mistake you avoided.",
+        "rubric": [
+          "Disclosure of AI use and QC design negotiated into the ESI protocol in advance",
+          "Requests a 502(d) order",
+          "Calibration on attorney-coded documents with frozen criteria version",
+          "Per-document immutable logging of model, prompt, output and coding history",
+          "Elusion sample across the whole null set including search-term misses",
+          "Correct sample size reasoning and recall interval, not a point estimate",
+          "Qualitative review of what the sample found (Broiler Chicken)",
+          "Cites Schulte and Diisocyanates appropriately"
+        ]
+      }
+    ]
+  }
+}
