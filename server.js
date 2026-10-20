@@ -15,6 +15,8 @@ const DATA_DIR = process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH |
 const MAX_DOC_BYTES = 1024 * 1024;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
 const BLOCKED = new Set(['test-local.html', 'content/validate.js', 'content/SCHEMA.md']);
+// Well-known paths browsers probe without reading the page head (iOS asks for /apple-touch-icon*.png).
+const ALIASES = { '/favicon.ico': '/icons/favicon-32.png', '/apple-touch-icon.png': '/icons/apple-touch-icon.png', '/apple-touch-icon-precomposed.png': '/icons/apple-touch-icon.png' };
 
 const wrap = (body) => `<!doctype html>
 <html lang="en">
@@ -97,7 +99,7 @@ async function api(req, res, url) {
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname.startsWith('/api/')) { api(req, res, url).catch(() => json(res, 500, { error: 'server error' })); return; }
-  const pathname = decodeURIComponent(url.pathname);
+  const pathname = ALIASES[url.pathname] || decodeURIComponent(url.pathname);
   if (pathname === '/healthz') { res.writeHead(200).end('ok'); return; }
   if (pathname === '/' || pathname === '/index.html') {
     res.writeHead(200, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-cache' }).end(index);
