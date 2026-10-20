@@ -13,3 +13,11 @@ https://claude.ai/artifact/WvG8yHupQi5obCC3WZ39q6
 - `brian-brennt/test-local.html` — headless smoke test. Serve the folder (`python3 -m http.server 8765`) and open it in Chromium headless with `--enable-logging=stderr` to see `[TEST]` lines.
 
 Progress is stored in the artifact's database and in the browser; nothing in this repo holds personal progress or stories.
+
+### Railway
+
+Also hosted on Railway (project `brian-brennt`, service `web`), deployed with `railway up`.
+
+- `server.js` serves `brian-brennt/` (no dependencies, `npm start`). It wraps `index.html` in a document skeleton, since the artifact runtime normally adds one.
+- With `APP_PASSPHRASE` set, it injects `brian-brennt/sync.js` — a stand-in for the artifact's `db` and `user` capabilities — and stores docs as JSON files in `DATA_DIR` (a Railway volume at `/data`). The app asks for the passphrase once per browser; without it, progress stays in that browser.
+- Run locally: `APP_PASSPHRASE=dev npm start` (data goes to `./data/`).
