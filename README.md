@@ -20,4 +20,5 @@ Also hosted on Railway (project `brian-brennt`, service `web`): https://web-prod
 
 - `server.js` serves `brian-brennt/` (no dependencies, `npm start`). It wraps `index.html` in a document skeleton, since the artifact runtime normally adds one.
 - With `APP_PASSPHRASE` set, it injects `brian-brennt/sync.js` — a stand-in for the artifact's `db` and `user` capabilities — and stores docs as JSON files in `DATA_DIR` (a Railway volume at `/data`). The app asks for the passphrase once per browser; without it, progress stays in that browser.
+- Installable as a PWA (add to home screen): server.js adds the manifest, icons and service-worker registration to the page head. `brian-brennt/sw.js` is network-first with an offline fallback and never caches `/api`. Icons in `brian-brennt/icons/` (SVG sources plus rendered PNGs).
 - Run locally: `APP_PASSPHRASE=dev npm start` (data goes to `./data/`).
