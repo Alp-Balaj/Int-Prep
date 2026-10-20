@@ -1,0 +1,972 @@
+{
+ "tier": {
+  "id": "cv",
+  "name": "Your CV, line by line",
+  "level": 2,
+  "tease": "You wrote 'Kafka' on your CV. The interviewer asks how consumer groups rebalance. Go."
+ },
+ "nodes": [
+  {
+   "id": "cv.microservices",
+   "title": "Microservices on clean architecture",
+   "tease": "Two of your services write the same table. The interviewer just called it a distributed monolith.",
+   "primer": {
+    "problem": "One big application gets hard to change: every release ships everything, one slow module slows all of them, and teams step on each other. Microservices split it so each part can change, deploy and fail on its own. Done badly, you get all the pain of a network and none of the independence.",
+    "picture": "Take one of your **clean architecture** solutions (Domain, Application, Infrastructure, API) and make it a whole service that owns one business capability and **its own database**. Nobody else touches that database. Services talk either **synchronously** (REST, like calling a method on another machine) or **asynchronously** (events on Kafka, like dropping a letter in a mailbox). Clean architecture organises the inside of a service; the boundaries between services are a separate decision.",
+    "sketch": "[Orders API]--REST-->[Payments API]     sync: caller waits, shares failure\n   |  Orders DB              |  Payments DB\n   v                         ^\n  outbox --> Kafka topic ----+               async: decoupled in time",
+    "terms": [
+     {
+      "term": "Bounded context",
+      "def": "A part of the business with its own consistent vocabulary and rules, the usual unit for drawing one service boundary."
+     },
+     {
+      "term": "Database-per-service",
+      "def": "Each service owns its data store privately; other services get its data only through its API or its events."
+     },
+     {
+      "term": "Dual write",
+      "def": "Writing to two systems, such as a database and Kafka, without one shared transaction, so a crash can leave them disagreeing."
+     },
+     {
+      "term": "Transactional outbox",
+      "def": "Saving the outgoing event as a row in the same database transaction as the business change, then publishing it afterwards."
+     },
+     {
+      "term": "Saga",
+      "def": "A business process spread over several services as a chain of local transactions, each undone by a compensating action on failure."
+     },
+     {
+      "term": "Modular monolith",
+      "def": "One deployable application split internally into strictly separated modules, giving clear boundaries without network calls between them."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "Draw boundaries around **business capabilities**, not technical layers. A \"Data service\" every other service calls is just a shared database. A Payroll service that owns pay runs and an Employees service that owns people are real boundaries, because each can change its rules without asking the other. Clean architecture then applies inside each service: the dependency rule points inward, the domain knows nothing about EF Core, Kafka or HTTP.\n\n**Database-per-service** is the rule that makes the split real. If a second service reads your tables, you can no longer rename a column without a joint release, and you are back to a monolith, only distributed.\n\n**Sync vs async.** REST calls are simple and give an immediate answer, but they chain availability: three services at 99.9% each give roughly 99.7% for the chain. Events on Kafka decouple in time: the consumer can be down and catch up later, at the price of eventual consistency.\n\nThe classic trap is the **dual write**: save the order to SQL Server, then publish `OrderPlaced` to Kafka. If the process dies between the two, the systems disagree forever. The **transactional outbox** fixes it: insert the event into an `OutboxMessages` table in the same transaction as the order, and let a relay (a hosted service polling the table, or change data capture such as Debezium) publish it. The relay can publish twice, so delivery is at-least-once and every consumer must be **idempotent**.\n\nWhen one business action spans services there is no distributed transaction; use a **saga**. In **choreography** each service reacts to events; in **orchestration** a coordinator tells each step what to do and runs **compensating actions** (refund, release stock) on failure.\n\nA small team, unclear boundaries or modest load point to a **modular monolith** first; agent platforms follow the same rule.",
+    "snippet": "// Outbox: business row and event row commit together, or neither does\nvar payment = Payment.Create(cmd.OrderId, cmd.Amount);\ndb.Payments.Add(payment);\ndb.OutboxMessages.Add(new OutboxMessage\n{\n    Id = Guid.NewGuid(),                 // consumers dedupe on this id\n    Type = \"PaymentRequested\",\n    Payload = JsonSerializer.Serialize(new { payment.Id, cmd.OrderId, cmd.Amount }),\n    OccurredAt = DateTime.UtcNow\n});\nawait db.SaveChangesAsync(ct);           // one local SQL transaction\n\n// OutboxRelay : BackgroundService, every few seconds:\n//   read unprocessed rows ordered by OccurredAt\n//   produce each to Kafka (key = OrderId), await the delivery report\n//   mark ProcessedAt; a crash before this line means a resend, never a loss",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "Pattern: Transactional outbox (microservices.io)",
+     "url": "https://microservices.io/patterns/data/transactional-outbox.html"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.microservices.c1",
+     "type": "mc",
+     "prompt": "An Orders service commits an order to SQL Server and then publishes OrderPlaced to Kafka. The pod is killed between the two calls. What is this failure called, and what is the standard fix?",
+     "options": [
+      "A dual write; use a transactional outbox",
+      "A split brain; add a ZooKeeper lock",
+      "A lost update; use optimistic concurrency with a rowversion",
+      "A poison message; route it to a dead-letter topic"
+     ],
+     "answer": 0,
+     "why": "Two systems written without one transaction is a dual write; the outbox puts the event in the same local transaction as the order. Optimistic concurrency is tempting but only protects one database row against concurrent edits, not the gap between SQL Server and Kafka."
+    },
+    {
+     "id": "cv.microservices.c2",
+     "type": "tf",
+     "prompt": "With database-per-service, a reporting service may query other services' tables directly, as long as it only reads.",
+     "answer": false,
+     "why": "Read access still couples you to the other service's schema, so a column rename breaks reporting. Reporting should consume events or published read models, for example an Elasticsearch index fed from Kafka."
+    },
+    {
+     "id": "cv.microservices.c3",
+     "type": "cloze",
+     "prompt": "In a saga, when a later step fails, the steps already committed are undone by running ___.",
+     "answer": "compensating transactions",
+     "why": "There is no rollback across services, only new local transactions that semantically reverse earlier ones, such as a refund for a charge. They must be idempotent too, because they can be retried."
+    },
+    {
+     "id": "cv.microservices.c4",
+     "type": "mc",
+     "prompt": "Which description is saga orchestration rather than choreography?",
+     "options": [
+      "A coordinator sends commands to each service in turn and triggers compensations when one fails",
+      "Each service listens for events and publishes its own events, with no central controller",
+      "All services enlist in one distributed two-phase-commit transaction",
+      "The API gateway retries failed calls until every service succeeds"
+     ],
+     "answer": 0,
+     "why": "Orchestration puts the flow in one place, which is easier to read and monitor. Choreography is the event-only version: looser coupling, but the overall flow exists only implicitly across services; 2PC is what sagas exist to avoid."
+    },
+    {
+     "id": "cv.microservices.c5",
+     "type": "tf",
+     "prompt": "A transactional outbox gives consumers exactly-once delivery, so they no longer need to deduplicate.",
+     "answer": false,
+     "why": "The relay can crash after publishing and before marking the row processed, so the event is sent again. The outbox guarantees no loss, not no duplicates; consumers dedupe on the event id."
+    },
+    {
+     "id": "cv.microservices.c6",
+     "type": "mc",
+     "prompt": "A team of four is starting an internal tool for about 50 daily users, and the domain boundaries are still unclear. What is the strongest default?",
+     "options": [
+      "A modular monolith with strict module boundaries, splitting out services later where needed",
+      "Eight microservices from day one so each module can scale independently",
+      "One microservice per database table",
+      "Serverless functions for every endpoint to avoid any architecture decisions"
+     ],
+     "answer": 0,
+     "why": "Microservices pay off with independent teams, deploy cadences or scaling needs, none of which exist here. Starting with many services fixes boundaries before you understand them, and moving a wrong network boundary costs far more than moving a module."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.microservices.e1",
+     "seconds": 150,
+     "prompt": "Your CV says you built microservice architectures based on clean architecture at Moveo. Pick one service and walk me through its structure and how it talks to the others.",
+     "modelAnswer": "Take one service I worked on (name the real one and its business capability). Inside, it follows clean architecture: a Domain project with entities and rules and no framework references, an Application layer with use cases and interfaces, Infrastructure with EF Core, the Kafka producer and external clients, and a thin ASP.NET Core API on top. Dependencies point inward, so I can unit test the rules without a database.\n\nIt owns its own database (say which: SQL Server, PostgreSQL or MongoDB) and nobody else queries it. Other services reach its data through its REST API when they need an immediate answer, or through events on Kafka when they only need to react.\n\nThe rule I use: synchronous only when the caller genuinely cannot continue without the answer, because every sync hop multiplies failure. For state changes other services care about I publish events, using an outbox so the database change and the event cannot disagree, and consumers are idempotent because delivery is at-least-once. If I did it again I would say exactly where we chose sync and why (have one real example ready).",
+     "rubric": [
+      "Names a business capability as the boundary, not a technical layer",
+      "Describes the clean architecture layers and the inward dependency rule",
+      "Service owns its database; no shared tables",
+      "Gives a clear rule for sync REST vs async events",
+      "Mentions outbox or idempotent consumers for consistency",
+      "Grounds it in a real service Alp built"
+     ]
+    },
+    {
+     "id": "cv.microservices.e2",
+     "seconds": 90,
+     "prompt": "When would you argue against microservices?",
+     "modelAnswer": "When the costs arrive before the benefits. Microservices buy independent deployment, independent scaling and team autonomy. They cost network latency, partial failures, eventual consistency, distributed tracing, more pipelines and more infrastructure. If I have one small team, a modest load and a domain whose boundaries are still moving, I pay all of that and collect almost nothing.\n\nIn that case I build a modular monolith: one deployable, but modules with their own namespaces, their own schemas or tables, and communication only through public interfaces or in-process events. I enforce the boundaries with architecture tests so they do not erode. When a module has a genuinely different scaling profile or a different team, it is already shaped to be extracted, and the in-process events become Kafka events. For an internal system with a few dozen daily users, like an ERP module set, this is usually the right call. The mistake I avoid is drawing network boundaries before I understand the domain, because moving a network boundary later is far more expensive than moving a module.",
+     "rubric": [
+      "Lists concrete costs: latency, partial failure, eventual consistency, ops overhead",
+      "Names conditions favouring a monolith: small team, unclear boundaries, modest load",
+      "Describes a modular monolith with enforced boundaries",
+      "Explains an extraction path to services later"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.microservices.s1",
+     "situation": "A mid-size law firm wants a document review platform. The client's architect proposes twelve microservices from day one, each with its own database, built by your team of four in five months. Matter intake, document ingestion, search and review assignment are the main features.",
+     "question": "What do you recommend?",
+     "options": [
+      {
+       "text": "A modular monolith with clear modules for intake, review and search, plus a separate ingestion worker because document processing has a different load profile; extract more services only when there is a reason.",
+       "verdict": "best",
+       "why": "It splits only where scaling truly differs (bulk ingestion), keeps the rest cheap to change, and fits a team of four. Boundaries stay clean enough to extract later."
+      },
+      {
+       "text": "Go with twelve services but share one database so joins stay easy.",
+       "verdict": "bad",
+       "why": "This is the distributed monolith: network costs plus schema coupling, with none of the independence that justifies microservices."
+      },
+      {
+       "text": "Build twelve services as proposed, each with its own database, and add Kafka between all of them.",
+       "verdict": "ok",
+       "why": "Architecturally coherent, but four people would spend much of five months on pipelines, contracts and eventual consistency instead of features the firm needs."
+      },
+      {
+       "text": "Build a single project with no internal modules, since boundaries can be worked out later.",
+       "verdict": "bad",
+       "why": "Without enforced module boundaries the code turns into a big ball of mud, and later extraction becomes a rewrite."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.kafka",
+   "title": "Kafka in production",
+   "tease": "A consumer dies mid-batch. Who gets its partitions, and which messages run twice?",
+   "primer": {
+    "problem": "Services need to hand events to each other without waiting for each other, without losing any, and with the option to replay history. A plain queue deletes messages once read; Kafka keeps them, so many independent readers can each process the same stream at their own pace.",
+    "picture": "A **topic** is like an append-only SQL table split into **partitions**. Each row has an **offset**, its position in that partition. A **consumer group** is a team of identical workers: every partition is read by exactly one member, and each member saves a bookmark, the **committed offset**, so the team knows where to resume. When members join or leave, the group redistributes partitions: a **rebalance**. Since Kafka 4.0 the cluster manages itself with **KRaft**, no ZooKeeper.",
+    "sketch": "topic payments (3 partitions)\n P0: [0][1][2][3][4]   -> consumer A   (committed 3)\n P1: [0][1][2]         -> consumer B   (committed 2)\n P2: [0][1][2][3]      -> consumer B\n group \"payroll-svc\"; C joins -> rebalance -> C takes P2",
+    "terms": [
+     {
+      "term": "Partition",
+      "def": "An ordered, append-only slice of a topic; ordering is guaranteed only inside one partition, and partitions are the unit of parallelism."
+     },
+     {
+      "term": "Offset",
+      "def": "The sequential position of a record inside one partition; a consumer group commits offsets to remember its progress."
+     },
+     {
+      "term": "Consumer group",
+      "def": "Consumers sharing one group id; Kafka assigns each partition to exactly one of them, spreading the work."
+     },
+     {
+      "term": "Rebalance",
+      "def": "Redistribution of partitions among group members, triggered when consumers join, leave, time out or subscriptions change."
+     },
+     {
+      "term": "KRaft",
+      "def": "Kafka's built-in Raft-based metadata quorum that replaced ZooKeeper; the only supported mode since Kafka 4.0."
+     },
+     {
+      "term": "Idempotent producer",
+      "def": "A producer mode where the broker discards duplicate retries using a producer id and per-partition sequence numbers."
+     },
+     {
+      "term": "Dead-letter topic",
+      "def": "A separate topic where a consumer parks messages it cannot process after retries, so one bad message never blocks a partition."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "A producer chooses the partition by hashing the **key**, so all events for one `orderId` land in one partition and stay ordered. No key means no ordering guarantee. Gotcha for a .NET shop: Confluent.Kafka (librdkafka) defaults to the `consistent_random` partitioner (CRC32), while the Java client uses murmur2, so a .NET and a Java producer can send the same key to different partitions unless you set `murmur2_random`.\n\nIn a **consumer group**, each partition goes to one member; consumers beyond the partition count sit idle. A **rebalance** happens when a member joins, leaves, misses heartbeats (`session.timeout.ms`) or takes longer than `max.poll.interval.ms` between polls. With the classic eager protocol everyone stops and gives up all partitions; **cooperative-sticky** moves only the partitions that must move. Kafka 4.0 (March 2025) removed ZooKeeper entirely, runs only on KRaft, and made the KIP-848 consumer protocol generally available: the broker-side group coordinator computes assignments incrementally, and clients opt in with `group.protocol=consumer`.\n\n**Delivery semantics** follow from when you commit. Commit before processing: at-most-once. Commit after: at-least-once, with duplicates after a crash or rebalance. Exactly-once exists only inside Kafka (transactions for read-process-write); once you write to SQL Server or call an API, you make the consumer **idempotent**, for example a processed-events table with a unique event id.\n\nThe **idempotent producer** (`EnableIdempotence = true`, which requires `acks=all`) stops duplicates caused by producer retries; it does nothing about consumer-side reprocessing. Kafka has no built-in dead-letter queue for ordinary consumers: after N retries you produce the message, with error headers, to a `.dlq` topic and move on. The same pattern carries over to AWS: MSK is managed Kafka, and an agent ingestion pipeline needs exactly these guarantees.",
+    "snippet": "var config = new ConsumerConfig\n{\n    BootstrapServers = \"broker:9092\",\n    GroupId = \"payroll-service\",\n    AutoOffsetReset = AutoOffsetReset.Earliest,\n    EnableAutoCommit = true,            // background commit of stored offsets...\n    EnableAutoOffsetStore = false,      // ...but we store only after handling\n    PartitionAssignmentStrategy = PartitionAssignmentStrategy.CooperativeSticky\n};\nusing var consumer = new ConsumerBuilder<string, string>(config).Build();\nconsumer.Subscribe(\"employee-events\");\nwhile (!ct.IsCancellationRequested)\n{\n    var cr = consumer.Consume(ct);\n    try { await handler.HandleAsync(cr.Message, ct); }   // idempotent on event id\n    catch (Exception ex) { await SendToDeadLetterAsync(cr, ex, ct); }\n    consumer.StoreOffset(cr);           // at-least-once: mark done after handling\n}\n\nvar producerConfig = new ProducerConfig\n{\n    BootstrapServers = \"broker:9092\",\n    EnableIdempotence = true,           // implies Acks.All, no duplicate retries\n};",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "Apache Kafka documentation: Design",
+     "url": "https://kafka.apache.org/documentation/#design"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.kafka.c1",
+     "type": "mc",
+     "prompt": "A topic has 6 partitions. You scale the consumer group to 8 instances. What happens?",
+     "options": [
+      "6 instances get one partition each and 2 sit idle",
+      "Each instance gets 0.75 of a partition on average via record-level load balancing",
+      "Kafka automatically adds 2 partitions to match",
+      "The group fails to start until the counts match"
+     ],
+     "answer": 0,
+     "why": "A partition is consumed by at most one member of a group, so parallelism is capped by partition count. Kafka never adds partitions on its own, and adding them later changes which partition a key hashes to."
+    },
+    {
+     "id": "cv.kafka.c2",
+     "type": "mc",
+     "prompt": "A consumer's handler calls a slow external API and occasionally spends 7 minutes on one batch. Rebalances keep happening and records are processed twice. What is the most likely cause?",
+     "options": [
+      "The time between polls exceeds max.poll.interval.ms (default 5 minutes), so the consumer is evicted",
+      "session.timeout.ms is too high",
+      "The idempotent producer is disabled",
+      "The topic has too many partitions"
+     ],
+     "answer": 0,
+     "why": "Heartbeats run in the background, so a slow handler does not miss heartbeats; it misses the poll deadline and leaves the group, and its uncommitted records are redelivered. session.timeout.ms governs heartbeat loss, not slow processing."
+    },
+    {
+     "id": "cv.kafka.c3",
+     "type": "tf",
+     "prompt": "Kafka 4.0 can still run with ZooKeeper if you enable a compatibility flag.",
+     "answer": false,
+     "why": "Kafka 4.0 removed ZooKeeper mode completely; clusters must run KRaft and migrate on a 3.x release first. Saying \"we use ZooKeeper\" in 2026 dates your Kafka knowledge."
+    },
+    {
+     "id": "cv.kafka.c4",
+     "type": "cloze",
+     "prompt": "Kafka guarantees message ordering only within a single ___.",
+     "answer": "partition",
+     "why": "Across partitions consumers run in parallel, so there is no global order. That is why you key by the entity whose events must stay in order, such as orderId."
+    },
+    {
+     "id": "cv.kafka.c5",
+     "type": "mc",
+     "prompt": "What does enabling the idempotent producer actually protect against?",
+     "options": [
+      "Duplicate records in a partition caused by the producer retrying a send",
+      "A consumer processing the same record twice after a rebalance",
+      "Two different services publishing the same business event",
+      "Records being written to the wrong partition"
+     ],
+     "answer": 0,
+     "why": "The broker deduplicates retries using the producer id and per-partition sequence numbers. Consumer-side duplicates after a crash or rebalance are a separate problem, solved by idempotent handling."
+    },
+    {
+     "id": "cv.kafka.c6",
+     "type": "cloze",
+     "prompt": "With the KIP-848 consumer rebalance protocol, generally available in Kafka 4.0, a client opts in by setting group.protocol=___.",
+     "answer": "consumer",
+     "why": "The old protocol is group.protocol=classic. With the new one the broker computes assignments and rebalances are incremental, so the stop-the-world pause disappears."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.kafka.e1",
+     "seconds": 150,
+     "prompt": "You list Kafka. How do consumer groups rebalance, and what did you do so a rebalance did not cause double processing?",
+     "modelAnswer": "A consumer group shares a topic's partitions: each partition is owned by exactly one member. A broker acts as group coordinator. When a member joins, leaves, misses heartbeats past session.timeout.ms, or goes longer than max.poll.interval.ms between polls, the group rebalances. In the classic eager protocol every member revokes all partitions and waits for a new assignment; cooperative-sticky moves only what has to move. Since Kafka 4.0 there is also the KIP-848 protocol, where the broker computes assignments incrementally and clients opt in with group.protocol=consumer. Kafka 4.0 also removed ZooKeeper; metadata lives in KRaft.\n\nThe danger is that anything processed but not yet committed is redelivered to the new owner. So I commit after processing, which gives at-least-once, and make handlers idempotent: every event carries an id, and the handler records it in a processed-events table in the same transaction as the business change, so a replay is a no-op. I also keep handlers fast so we never exceed the poll interval. (Add the real Moveo topic and what the handler wrote.)",
+     "rubric": [
+      "Each partition owned by one member; coordinator broker",
+      "Names rebalance triggers including max.poll.interval.ms",
+      "Eager vs cooperative, and mentions KIP-848 or KRaft in Kafka 4.0",
+      "Uncommitted records are redelivered: at-least-once",
+      "Idempotent handler with a dedupe key in the same transaction",
+      "Ties to a real topic or service from Alp's work"
+     ]
+    },
+    {
+     "id": "cv.kafka.e2",
+     "seconds": 120,
+     "prompt": "One message in your topic always throws an exception in the consumer. What happens, and how do you handle it?",
+     "modelAnswer": "If the consumer just retries forever, that poison message blocks its whole partition: every later event for those keys waits behind it, and consumer lag grows while the rest of the group looks healthy. If it skips silently, we lose data. Neither is acceptable.\n\nI separate failures into transient and permanent. Transient ones, like a database timeout, get a few retries with backoff, and if the outage is long I pause the partition rather than burn through retries. Permanent ones, like a deserialisation error or a validation failure, go to a dead-letter topic after the retry budget: I produce the original key and value plus headers with the error, the source topic, partition and offset, then commit and move on. Kafka does not do this for you with a plain consumer; it is my code.\n\nThen the dead-letter topic needs an owner: an alert on its message rate, a way to inspect messages, and a replay tool that republishes fixed messages to the main topic. Because consumers are idempotent, replaying is safe. Ordering caveat: once a message is parked, later events for that key are processed first, so for strictly ordered entities I may park the whole key.",
+     "rubric": [
+      "Explains that a poison message blocks its partition",
+      "Distinguishes transient from permanent failures with bounded retries",
+      "Dead-letter topic with error and origin metadata",
+      "Alerting and a replay path for the DLQ",
+      "Notes the ordering trade-off of skipping a message"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.kafka.s1",
+     "situation": "An ingestion consumer for a law firm's document pipeline calls an OCR API that sometimes takes minutes. Consumer lag is climbing, logs show a rebalance every few minutes, and some documents are indexed twice. The topic has 12 partitions and 4 consumers.",
+     "question": "What do you do first?",
+     "options": [
+      {
+       "text": "Keep handlers short: hand slow OCR work to a bounded worker pool, pause the partition while it runs, raise max.poll.interval.ms to fit, use cooperative-sticky assignment, and make indexing idempotent on the document id.",
+       "verdict": "best",
+       "why": "It removes the cause (exceeding the poll interval), limits the damage of any remaining rebalance, and makes duplicates harmless."
+      },
+      {
+       "text": "Scale to 12 consumers so each one has less work.",
+       "verdict": "ok",
+       "why": "It helps throughput up to the partition count, but a single slow document still breaks the poll interval and causes the same rebalance loop."
+      },
+      {
+       "text": "Turn on auto-commit with offset storing before processing so records are never redelivered.",
+       "verdict": "bad",
+       "why": "That is at-most-once: a crash mid-OCR silently drops a client document, which is worse than a duplicate in eDiscovery."
+      },
+      {
+       "text": "Lower session.timeout.ms so dead consumers are detected faster.",
+       "verdict": "bad",
+       "why": "The consumers are not dead, they are slow; a shorter session timeout adds rebalances instead of removing them."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.docker",
+   "title": "Docker for .NET services",
+   "tease": "Your .NET image is 900 MB and runs as root. The interviewer asks why. What do you say?",
+   "primer": {
+    "problem": "\"It works on my machine\" fails in production because the server has a different runtime, different libraries or different settings. Docker packages the application with everything it needs, so the same artefact runs identically on a laptop, in CI and in the cloud.",
+    "picture": "An **image** is like a compiled build output, frozen and versioned; a **container** is a running process started from it, the way an object is an instance of a class. Images are stacks of **layers**, like Git commits: each Dockerfile instruction adds one, and unchanged layers are reused from cache. A **multi-stage build** compiles in a big SDK image, then copies only the published output into a small runtime image. **Compose** starts your whole local stack with one command.",
+    "terms": [
+     {
+      "term": "Image",
+      "def": "A read-only, versioned package of filesystem layers and settings from which containers are started."
+     },
+     {
+      "term": "Container",
+      "def": "A running, isolated process created from an image, with its own thin writable layer that disappears when removed."
+     },
+     {
+      "term": "Layer",
+      "def": "The filesystem change produced by one Dockerfile instruction; layers are cached and shared between images."
+     },
+     {
+      "term": "Multi-stage build",
+      "def": "A Dockerfile with several FROM stages, where the final stage copies only the needed build outputs from earlier ones."
+     },
+     {
+      "term": "Chiseled image",
+      "def": "Microsoft's stripped Ubuntu-based .NET images with no shell or package manager, running as non-root by default."
+     },
+     {
+      "term": "Healthcheck",
+      "def": "A command or endpoint the platform polls to decide whether a container is actually ready and working, not just started."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "Layer order is a performance decision. Docker reuses a cached layer only if that instruction and everything before it are unchanged. So copy the `.csproj` files and run `dotnet restore` first, then copy the source: a code change no longer re-downloads every NuGet package.\n\nSize comes from shipping the wrong things. The `sdk` image contains compilers and tooling you need to build and never to run. A **multi-stage build** builds in `mcr.microsoft.com/dotnet/sdk` and copies `dotnet publish` output into `aspnet`, or into a **chiseled** variant, which drops the shell and package manager and shrinks both size and attack surface. Trimmed or Native AOT publishing can shrink it further where the app supports it.\n\nSecurity defaults changed in .NET 8: official images include a non-root `app` user (exposed as `$APP_UID`) and listen on port **8080** instead of 80, because non-root processes cannot bind ports below 1024. Add `USER $APP_UID`; chiseled images already run as non-root. A container running as root turns any remote code execution into root inside the container and makes an escape far more dangerous.\n\nA container that has started is not necessarily ready. ASP.NET Core exposes `MapHealthChecks(\"/healthz\")`; the orchestrator (an ECS container health check, a Kubernetes probe or a load balancer target group) polls it. In Docker Compose, `depends_on` waits only for the container to start unless you add a `healthcheck` and `condition: service_healthy`, which matters when your API needs SQL Server, Kafka or Redis to accept connections first.\n\nContainers are disposable: anything written to the writable layer vanishes on removal, so data goes in volumes or managed services. On AWS the same image runs on ECS Fargate or Lambda container images, which is how agent tools are usually packaged.",
+    "snippet": "FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build\nWORKDIR /src\nCOPY Payroll.Api/Payroll.Api.csproj Payroll.Api/\nRUN dotnet restore Payroll.Api/Payroll.Api.csproj    # cached until the csproj changes\nCOPY . .\nRUN dotnet publish Payroll.Api -c Release -o /app --no-restore\n\nFROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS final\nWORKDIR /app\nCOPY --from=build /app .\nUSER $APP_UID          # non-root user built into .NET 8+ images\nEXPOSE 8080            # .NET 8+ default port, not 80\nENTRYPOINT [\"dotnet\", \"Payroll.Api.dll\"]\n\n# compose.yaml (local dev)\n# services:\n#   api:\n#     build: .\n#     depends_on: { db: { condition: service_healthy } }\n#   db:\n#     image: postgres:17\n#     healthcheck: { test: [\"CMD\", \"pg_isready\"], interval: 5s }",
+    "snippetLang": "text",
+    "source": {
+     "title": "Multi-stage builds (Docker Docs)",
+     "url": "https://docs.docker.com/build/building/multi-stage/"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.docker.c1",
+     "type": "mc",
+     "prompt": "Why do .NET Dockerfiles copy the .csproj and run dotnet restore before copying the rest of the source?",
+     "options": [
+      "So a source-only change reuses the cached restore layer instead of re-downloading packages",
+      "Because dotnet publish fails if source files exist during restore",
+      "To make the final image smaller",
+      "Because COPY . . does not copy project files"
+     ],
+     "answer": 0,
+     "why": "Each instruction is a cache key; once a layer changes, every later layer is rebuilt. Restore depends only on project files, so isolating it keeps builds fast. It does not by itself reduce the final image size; multi-stage does that."
+    },
+    {
+     "id": "cv.docker.c2",
+     "type": "tf",
+     "prompt": "Files a container writes to its own filesystem survive docker rm, as long as the image is not deleted.",
+     "answer": false,
+     "why": "Each container has a thin writable layer that is deleted with the container; the image stays unchanged. Persistent data belongs in volumes or external services such as RDS or S3."
+    },
+    {
+     "id": "cv.docker.c3",
+     "type": "mc",
+     "prompt": "In a multi-stage build, what ends up in the final image?",
+     "options": [
+      "Only the final stage's base image plus what you explicitly COPY --from earlier stages",
+      "All layers from every stage, compressed",
+      "The SDK, because the runtime image depends on it",
+      "Only the files changed since the last build"
+     ],
+     "answer": 0,
+     "why": "Earlier stages are discarded after the build; only the last stage ships. That is why the SDK, source code and intermediate files never reach production."
+    },
+    {
+     "id": "cv.docker.c4",
+     "type": "cloze",
+     "prompt": "Since .NET 8, the official ASP.NET Core container images listen on port ___ by default.",
+     "answer": "8080",
+     "why": "The default moved from 80 to 8080 so the app can run as the non-root app user, which cannot bind ports below 1024. Old docker run -p 80:80 commands silently stop working."
+    },
+    {
+     "id": "cv.docker.c5",
+     "type": "mc",
+     "prompt": "In Docker Compose, your API starts before SQL Server accepts connections and crashes. What fixes it properly?",
+     "options": [
+      "Add a healthcheck to the database and use depends_on with condition: service_healthy",
+      "Add depends_on: [db] with no condition",
+      "Add a sleep 30 to the API entrypoint",
+      "Set restart: always on the database"
+     ],
+     "answer": 0,
+     "why": "Plain depends_on waits only for the container to start, not for the service inside to be ready. A sleep is a race you eventually lose; the API should also retry its connection on startup."
+    },
+    {
+     "id": "cv.docker.c6",
+     "type": "tf",
+     "prompt": "Running as root inside a container is harmless because the container is already isolated from the host.",
+     "answer": false,
+     "why": "Isolation relies on kernel features that have had escape bugs, and root makes those exploits and mounted-volume abuse far worse. Defence in depth: non-root user, read-only filesystem, minimal image."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.docker.e1",
+     "seconds": 120,
+     "prompt": "You list Docker. Walk me through the Dockerfile for one of your .NET services, and tell me how you would make it smaller and safer.",
+     "modelAnswer": "For one of our ASP.NET Core services (name it) the Dockerfile had two stages. The build stage starts from the .NET SDK image, copies the csproj files first and runs dotnet restore, so that layer stays cached when only code changes, then copies the source and runs dotnet publish in Release.\n\nThe final stage starts from the aspnet runtime image and copies only the publish folder. That alone removes the SDK, which is most of the size. To go further I would use the chiseled image, which has no shell and no package manager, so it is smaller and gives an attacker less to work with. If the app supports trimming or Native AOT, that shrinks it again.\n\nFor safety: run as the built-in non-root app user with USER $APP_UID, listen on 8080, no secrets baked into layers because image history keeps them, scan the image in the pipeline and pin base image versions. Health comes from a /healthz endpoint the orchestrator polls. Locally, Compose started the service with its dependencies (say which: SQL Server, Kafka, Redis) and waited for their health checks.",
+     "rubric": [
+      "Multi-stage: SDK to build, runtime image to run",
+      "Layer ordering for cache: restore before copying source",
+      "Size reduction: chiseled image, trimming or AOT",
+      "Non-root user and port 8080",
+      "No secrets in layers, image scanning",
+      "Healthcheck and Compose for local dependencies"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.docker.s1",
+     "situation": "Before a law firm's security review, a scanner flags your API image: 1.1 GB, based on the .NET SDK image, running as root, with an appsettings.Production.json containing a database password. Deployment to ECS Fargate is next week.",
+     "question": "What do you change?",
+     "options": [
+      {
+       "text": "Switch to a multi-stage build onto the aspnet chiseled image, run as the non-root app user, remove the secret from the image and inject it at runtime from Secrets Manager, rotate the leaked password, and scan in CI.",
+       "verdict": "best",
+       "why": "It fixes size, privilege and the secret, and recognises that a password once baked into a layer is compromised and must be rotated, not just deleted."
+      },
+      {
+       "text": "Delete the appsettings file in a later RUN rm instruction and keep the rest.",
+       "verdict": "bad",
+       "why": "The file still exists in the earlier layer and can be extracted from the image history; the secret stays leaked."
+      },
+      {
+       "text": "Move to the aspnet runtime image and add USER $APP_UID, and handle secrets after go-live.",
+       "verdict": "ok",
+       "why": "Good partial fix for size and privilege, but shipping a known leaked password to a law firm is the finding that fails the review."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.rest-api",
+   "title": "REST API design",
+   "tease": "The client retries a POST after a timeout. Did your API just charge the customer twice?",
+   "primer": {
+    "problem": "Front ends, partners and other services all depend on your API. If its behaviour on retries, errors and large result sets is vague, every client guesses differently, and a network timeout turns into a duplicate payment or a broken integration.",
+    "picture": "Think of the API as a public interface in C#: **resources** are the nouns (`/employees/42`), HTTP methods are the verbs, and status codes are the return types. The contract is written down in **OpenAPI**, like an interface file other teams compile against. Retries are safe only for **idempotent** operations, so for creates you add an **idempotency key**. Errors come back in one standard shape, **ProblemDetails**, instead of each endpoint inventing its own.",
+    "terms": [
+     {
+      "term": "Resource",
+      "def": "A thing the API exposes at a URL, such as an employee or a payment, manipulated with standard HTTP methods."
+     },
+     {
+      "term": "Idempotent",
+      "def": "An operation that leaves the server in the same state whether it is performed once or many times."
+     },
+     {
+      "term": "Idempotency key",
+      "def": "A unique id the client sends with a request so the server can recognise and safely replay a retried request."
+     },
+     {
+      "term": "Keyset pagination",
+      "def": "Paging with a cursor based on the last row seen, like WHERE Id > @lastId, instead of skipping N rows."
+     },
+     {
+      "term": "ProblemDetails",
+      "def": "The standard JSON error body from RFC 9457 with type, title, status, detail and instance fields."
+     },
+     {
+      "term": "OpenAPI",
+      "def": "A machine-readable description of an HTTP API's endpoints and schemas, used for docs, client generation and testing."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "Model **resources**, not actions: `POST /payroll-runs` creates a run, `GET /payroll-runs/7` reads it, `POST /payroll-runs/7/approval` models an approval as a sub-resource rather than `/approvePayrollRun`.\n\nStatus codes carry meaning clients act on. `201 Created` with a `Location` header for creates, `204` for success with no body, `400` for malformed input, `401` when the caller is not authenticated, `403` when authenticated but not allowed, `404`, `409` for a conflict with current state, `412` when an `If-Match` ETag no longer matches (optimistic concurrency, like a SQL Server rowversion), `429` for rate limits.\n\n**Idempotency.** RFC 9110 defines GET, HEAD, PUT and DELETE as idempotent; POST is not, and PATCH is not guaranteed. A client that times out cannot know whether its POST happened. The fix is an `Idempotency-Key` header: the client generates a UUID per logical operation, the server stores the key with a hash of the request and the response, and a retry gets the stored response instead of a second charge. Same key with a different body is an error, and a unique constraint on the key handles two concurrent retries.\n\n**Pagination.** Offset paging (`skip=10000&take=50`) gets slower the deeper you go and skips or repeats rows when data changes. Keyset paging (`WHERE (CreatedAt, Id) > (@c, @id)` with an opaque cursor) stays fast and stable.\n\n**Versioning.** Additive changes are free; breaking changes get a new version (`/v2` or a header, for example with the Asp.Versioning package) and a deprecation window.\n\n**Errors** use ProblemDetails (RFC 9457, which replaced RFC 7807): `AddProblemDetails()` in ASP.NET Core. Since .NET 9, `AddOpenApi()` generates the OpenAPI document natively, and templates no longer include Swashbuckle. That spec is also what you hand an agent as a tool definition.",
+    "snippet": "builder.Services.AddProblemDetails();     // RFC 9457 error bodies\nbuilder.Services.AddOpenApi();            // built in since .NET 9\nvar app = builder.Build();\napp.MapOpenApi();                         // serves /openapi/v1.json\n\napp.MapPost(\"/v1/payments\", async (CreatePayment cmd,\n    [FromHeader(Name = \"Idempotency-Key\")] Guid key, PaymentsDb db) =>\n{\n    var seen = await db.IdempotencyKeys.FindAsync(key);\n    if (seen is not null)\n        return seen.RequestHash == cmd.Hash()\n            ? Results.Json(seen.Body, statusCode: seen.Status)   // replay, no 2nd charge\n            : Results.Problem(statusCode: 422,\n                title: \"Idempotency-Key reused with a different request\");\n\n    var payment = await payments.ChargeAsync(cmd);\n    db.IdempotencyKeys.Add(new(key, cmd.Hash(), 201, payment)); // unique index on key\n    await db.SaveChangesAsync();\n    return Results.Created($\"/v1/payments/{payment.Id}\", payment);\n});",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "RFC 9110: HTTP Semantics",
+     "url": "https://www.rfc-editor.org/rfc/rfc9110.html"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.rest-api.c1",
+     "type": "mc",
+     "prompt": "Which set of HTTP methods does RFC 9110 define as idempotent?",
+     "options": [
+      "GET, HEAD, PUT, DELETE",
+      "GET, POST, PUT",
+      "GET, PUT, PATCH, DELETE",
+      "Only GET and HEAD"
+     ],
+     "answer": 0,
+     "why": "PUT replaces a resource with the same representation every time, and DELETE leaves it deleted. PATCH is the tempting extra: a patch like \"increment counter\" changes state on each call, so it is not idempotent by definition."
+    },
+    {
+     "id": "cv.rest-api.c2",
+     "type": "mc",
+     "prompt": "A user with a valid token calls an endpoint that requires the payroll-admin role, which they lack. Which status code is correct?",
+     "options": [
+      "403 Forbidden",
+      "401 Unauthorized",
+      "404 Not Found",
+      "400 Bad Request"
+     ],
+     "answer": 0,
+     "why": "401 means \"we do not know who you are\" (missing or invalid credentials); 403 means \"we know who you are and the answer is no\". Returning 404 is a deliberate choice only when even revealing the resource exists would leak information."
+    },
+    {
+     "id": "cv.rest-api.c3",
+     "type": "cloze",
+     "prompt": "The ProblemDetails error format is defined in RFC ___, which obsoleted RFC 7807.",
+     "answer": "9457",
+     "why": "RFC 9457 kept the same fields (type, title, status, detail, instance) and added guidance for multiple problems and a registry of common types. ASP.NET Core emits it via AddProblemDetails()."
+    },
+    {
+     "id": "cv.rest-api.c4",
+     "type": "tf",
+     "prompt": "Sending the same PUT /employees/42 request twice must leave the server in the same state as sending it once.",
+     "answer": true,
+     "why": "That is what idempotent means: the response may differ (200 then 200, or 201 then 200), but the resulting state may not. It is why clients can safely retry PUT after a timeout."
+    },
+    {
+     "id": "cv.rest-api.c5",
+     "type": "mc",
+     "prompt": "Why prefer keyset (cursor) pagination over offset pagination for a large, frequently updated table?",
+     "options": [
+      "It stays fast at deep pages and does not skip or repeat rows when rows are inserted",
+      "It lets clients jump straight to page 500",
+      "It removes the need for an index",
+      "It returns the total count for free"
+     ],
+     "answer": 0,
+     "why": "OFFSET makes the database read and discard all earlier rows, and inserts shift the window. Keyset seeks straight to the last seen key using an index; its trade-off is that random page jumps are no longer possible."
+    },
+    {
+     "id": "cv.rest-api.c6",
+     "type": "cloze",
+     "prompt": "A successful POST that creates a resource should return 201 Created with a ___ header pointing to the new resource.",
+     "answer": "Location",
+     "why": "Location gives the client the canonical URL without guessing ids. Results.Created(uri, body) in ASP.NET Core sets it for you."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.rest-api.e1",
+     "seconds": 120,
+     "prompt": "Your CV says you built RESTful APIs. A client times out on a POST that creates a payment and retries. How does your API make sure the payment happens once?",
+     "modelAnswer": "The core problem is that POST is not idempotent and the client cannot tell whether the first request succeeded. So I make the operation idempotent explicitly. The client generates a unique Idempotency-Key, a UUID, per logical operation and sends it on the original request and every retry.\n\nOn the server I store the key with a hash of the request body, the status and the response, in the same transaction as the payment, with a unique index on the key. If a request arrives with a known key and the same hash, I return the stored response, no second charge. Same key with a different body is a client bug and gets a 422 ProblemDetails. If two retries race, the unique constraint makes one fail, and that one gets 409 or waits and replays. Keys expire after a sensible window, say 24 hours.\n\nIf the payment goes to an external provider, I pass my own payment id as their idempotency key too, so the guarantee holds end to end. I would mention where we used this or what we would have needed at Moveo (fill in a real endpoint).",
+     "rubric": [
+      "States that POST is not idempotent and the client cannot know the outcome",
+      "Client-generated idempotency key per logical operation",
+      "Server stores key, request hash and response; replays on retry",
+      "Handles same key with different body and concurrent retries",
+      "Propagates idempotency to downstream providers"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.rest-api.s1",
+     "situation": "Your matter-management API is used by the firm's Angular front end and by an external billing partner. You need to split the clientName field into a structured client object, which is a breaking change. The partner deploys quarterly.",
+     "question": "How do you ship it?",
+     "options": [
+      {
+       "text": "Add the new client object alongside clientName in v1, release v2 without clientName, announce a deprecation date for v1 with Deprecation and Sunset headers, and track which callers still use v1.",
+       "verdict": "best",
+       "why": "Additive first means nobody breaks today; the version boundary and measured deprecation give the quarterly partner time to move."
+      },
+      {
+       "text": "Only add the new object and keep clientName forever.",
+       "verdict": "ok",
+       "why": "Safe and sometimes right, but two sources of truth drift apart over time and the API accumulates cruft with no path to remove it."
+      },
+      {
+       "text": "Change the field in place and update the Angular app in the same release.",
+       "verdict": "bad",
+       "why": "Your own front end survives; the partner's integration breaks the moment you deploy, and you find out from their support desk."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.jwt-oauth",
+   "title": "JWT, OAuth 2.0 and OIDC",
+   "tease": "Your Angular app keeps the JWT in localStorage. One XSS bug later, whose token is it?",
+   "primer": {
+    "problem": "Every API call must say who the user is and what they may do, without sending a password each time and without the API asking a database on every request. The token that carries this must be impossible to forge and hard to steal.",
+    "picture": "A **JWT** is like a signed boarding pass: anyone can read the name and seat, but only the airline can produce a valid signature, and the gate checks it without phoning the airline. **OAuth 2.0** is the check-in process that issues passes: an **authorization server** hands out **access tokens** for APIs. **OIDC** adds an **ID token** that says who logged in. Your Angular app gets tokens via **authorization code + PKCE**; ASP.NET Core validates them.",
+    "sketch": "Angular --(1) redirect + code_challenge--> Authorization server (login)\nAngular <-(2) code-----------------------------\nAngular --(3) code + code_verifier-----------> token endpoint\nAngular <-(4) access token (+ refresh, id token)\nAngular --(5) Authorization: Bearer <JWT>----> ASP.NET Core API\n                                    API checks signature via JWKS, iss, aud, exp",
+    "terms": [
+     {
+      "term": "JWT",
+      "def": "A compact token of base64url header, payload and signature; signed so it cannot be altered, but readable by anyone."
+     },
+     {
+      "term": "Claims",
+      "def": "Statements inside the token payload, such as sub (user id), aud (intended API), exp (expiry) or roles."
+     },
+     {
+      "term": "Access token",
+      "def": "A short-lived token the client sends to an API on each call to prove what it is allowed to do."
+     },
+     {
+      "term": "Refresh token",
+      "def": "A long-lived credential used only at the token endpoint to obtain new access tokens without logging in again."
+     },
+     {
+      "term": "PKCE",
+      "def": "Proof Key for Code Exchange: the client proves it started the login by sending a secret verifier when redeeming the code."
+     },
+     {
+      "term": "JWKS",
+      "def": "The authorization server's published set of public keys, which APIs fetch to verify token signatures."
+     },
+     {
+      "term": "BFF",
+      "def": "Backend for Frontend: a server-side component that holds the tokens and gives the browser only an HttpOnly session cookie."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "A JWT is `header.payload.signature`, each part base64url-encoded. It is **signed, not encrypted**: anyone holding it can read the claims, so never put secrets in it. With RS256 or ES256 the authorization server signs with a private key and APIs verify with the public key from its **JWKS** endpoint. Validation means: signature valid with an expected algorithm (reject `none`, and never accept HS256 when you expect RS256), `iss` is your issuer, `aud` is this API, `exp` and `nbf` hold. Skipping `aud` lets a token minted for another API in the same tenant open yours.\n\n**Access tokens** are short-lived (minutes) because a bearer token cannot be recalled once stolen. **Refresh tokens** live longer, go only to the token endpoint, and should rotate on each use so a replayed old one is detected.\n\nFor a browser SPA use **authorization code with PKCE**: the app creates a random `code_verifier`, sends its SHA-256 hash as `code_challenge`, and must present the verifier to redeem the code, so an intercepted code is useless. The implicit flow, which returned tokens in the URL, is deprecated by RFC 9700 (OAuth 2.0 Security Best Current Practice, January 2025) and omitted from OAuth 2.1, which in 2026 is still an IETF draft but already what major identity providers implement.\n\n**Where to store tokens in Angular.** localStorage and sessionStorage are readable by any script, so one XSS bug exfiltrates the token. In-memory storage is better but lost on reload. For sensitive data such as a law firm's, the **BFF** pattern keeps tokens server-side and gives the browser an HttpOnly, Secure, SameSite cookie.\n\nAngular guards (AuthGuard, RoleGuard) only shape the UI; the API is the real gate: `AddJwtBearer` for validation, then `[Authorize(Roles = ...)]` or policies with `RequireClaim`. Agents need the same discipline: act with the user's identity, never a shared superuser token.",
+    "snippet": "builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)\n    .AddJwtBearer(o =>\n    {\n        o.Authority = \"https://login.example.com/\";   // discovery + JWKS from here\n        o.Audience = \"payroll-api\";                   // reject tokens for other APIs\n        o.TokenValidationParameters = new()\n        {\n            ValidateIssuer = true,\n            ValidateAudience = true,\n            ValidateLifetime = true,\n            ClockSkew = TimeSpan.FromMinutes(1),       // default is 5 minutes\n            RoleClaimType = \"roles\"\n        };\n    });\n\nbuilder.Services.AddAuthorization(o =>\n    o.AddPolicy(\"PayrollApprover\", p => p\n        .RequireRole(\"payroll-admin\")\n        .RequireClaim(\"dept\", \"finance\")));\n\napp.MapPost(\"/payroll-runs/{id}/approval\", Approve)\n   .RequireAuthorization(\"PayrollApprover\");",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "RFC 9700: Best Current Practice for OAuth 2.0 Security",
+     "url": "https://datatracker.ietf.org/doc/html/rfc9700"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.jwt-oauth.c1",
+     "type": "mc",
+     "prompt": "What does a valid JWT signature guarantee?",
+     "options": [
+      "The token was issued by the holder of the signing key and has not been altered",
+      "Nobody except the API can read the claims",
+      "The token has not been stolen",
+      "The user is still active in the identity provider"
+     ],
+     "answer": 0,
+     "why": "Signing gives integrity and authenticity, not confidentiality: the payload is only base64url-encoded. It also cannot prove the bearer is the rightful owner, which is why access tokens are short-lived."
+    },
+    {
+     "id": "cv.jwt-oauth.c2",
+     "type": "tf",
+     "prompt": "For a new Angular SPA in 2026, the implicit grant is still the recommended OAuth flow.",
+     "answer": false,
+     "why": "RFC 9700 deprecates the implicit grant and OAuth 2.1 drops it; the recommendation is authorization code with PKCE, or a BFF that keeps tokens server-side."
+    },
+    {
+     "id": "cv.jwt-oauth.c3",
+     "type": "mc",
+     "prompt": "A law firm's review SPA handles privileged documents. Where should access and refresh tokens live?",
+     "options": [
+      "Server-side in a backend-for-frontend, with the browser holding only an HttpOnly, Secure, SameSite cookie",
+      "localStorage, because it survives page reloads",
+      "sessionStorage, because it is cleared when the tab closes",
+      "A non-HttpOnly cookie so Angular can attach it to requests"
+     ],
+     "answer": 0,
+     "why": "Any script on the page can read localStorage, sessionStorage and non-HttpOnly cookies, so a single XSS bug steals the token. sessionStorage is tempting because it is short-lived, but it is just as readable while the tab is open."
+    },
+    {
+     "id": "cv.jwt-oauth.c4",
+     "type": "cloze",
+     "prompt": "In PKCE the client sends a hash called the code_challenge in the authorization request and later proves possession by sending the original ___ when redeeming the code.",
+     "answer": "code_verifier",
+     "why": "An attacker who intercepts the authorization code lacks the verifier and cannot exchange it. Always use the S256 method, not plain."
+    },
+    {
+     "id": "cv.jwt-oauth.c5",
+     "type": "tf",
+     "prompt": "By default, ASP.NET Core JWT bearer validation accepts a token for up to 5 minutes after its exp time.",
+     "answer": true,
+     "why": "TokenValidationParameters.ClockSkew defaults to 5 minutes to tolerate clock drift. With 5-minute access tokens that nearly doubles their life, so many teams lower it to a minute or less."
+    },
+    {
+     "id": "cv.jwt-oauth.c6",
+     "type": "mc",
+     "prompt": "Your Angular RoleGuard hides the admin pages from non-admins. What else is required?",
+     "options": [
+      "The API must enforce the same role or claim on every admin endpoint",
+      "Nothing; a CanLoad guard prevents the code from being downloaded",
+      "Obfuscating the admin route names",
+      "Encrypting the JWT so users cannot see their roles"
+     ],
+     "answer": 0,
+     "why": "Guards run in the user's browser and can be bypassed with a direct HTTP call. CanLoad keeps the lazy bundle from loading, which is tempting, but the API endpoints are still reachable; authorization belongs on the server."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.jwt-oauth.e1",
+     "seconds": 150,
+     "prompt": "Your CV says JWT/OAuth authentication and authorization between front end and back end. Walk me through what happens from the login click to the API authorizing a request.",
+     "modelAnswer": "The Angular app redirects to the authorization server using the authorization code flow with PKCE: it generates a random code_verifier, sends its SHA-256 hash as the code_challenge, plus client id, redirect URI, scopes and a state value against CSRF. The user logs in there, never in our app. The server redirects back with a short-lived code, and the app redeems it with the code_verifier, receiving an access token, an ID token and usually a refresh token.\n\nOn each API call the app sends the access token as a Bearer header, typically through an HTTP interceptor. In ASP.NET Core, AddJwtBearer fetches the issuer's signing keys from its JWKS endpoint and checks the signature, issuer, audience and expiry. Then authorization: roles or claims map to policies, enforced on the endpoint. Angular guards only decide what the user sees.\n\nWhen the access token expires, the refresh token gets a new one, ideally rotated. Storage is the weak point: localStorage is readable by any XSS, so for sensitive data I would move to a BFF with an HttpOnly cookie. (Say honestly what Moveo used and what you would change.)",
+     "rubric": [
+      "Authorization code with PKCE, explains verifier and challenge",
+      "Bearer token sent via interceptor",
+      "API validates signature via JWKS plus iss, aud, exp",
+      "Role or claim policies enforced server-side; guards are UX only",
+      "Refresh token use and rotation",
+      "Addresses token storage and XSS risk honestly"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.jwt-oauth.s1",
+     "situation": "A penetration test of a law firm's Angular portal finds access tokens valid for 24 hours stored in localStorage, and the API does not check the aud claim. The firm wants a remediation plan before the portal holds privileged material next month.",
+     "question": "What is your plan?",
+     "options": [
+      {
+       "text": "Validate aud and iss immediately, cut access token lifetime to minutes with rotating refresh tokens, move token handling to a BFF with HttpOnly cookies, and add a strict Content Security Policy.",
+       "verdict": "best",
+       "why": "It closes the cross-API token reuse now, shrinks the value of any stolen token, removes tokens from script reach, and reduces XSS risk itself."
+      },
+      {
+       "text": "Move tokens from localStorage to sessionStorage and keep the rest.",
+       "verdict": "bad",
+       "why": "sessionStorage is equally readable by injected scripts; the 24-hour token and missing audience check remain."
+      },
+      {
+       "text": "Add aud validation and shorten token lifetime, keeping localStorage for now with a CSP.",
+       "verdict": "ok",
+       "why": "A solid first step that reduces blast radius, but tokens stay reachable by any XSS that slips past the CSP."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.devops-ci",
+   "title": "Azure DevOps, TFS and Git",
+   "tease": "You wrote \"TFS\" on your CV. The interviewer asks what a changeset is, then how to do it on GitHub.",
+   "primer": {
+    "problem": "A team needs one place for code history, planned work, builds and releases, with rules that stop untested or unreviewed code reaching production. Without it, nobody knows which change shipped, why, or who approved it.",
+    "picture": "**Azure DevOps** bundles **Boards** (work items, sprints), **Repos** (Git or TFVC), **Pipelines** (build and release) and Artifacts. **TFS** is its on-premises ancestor, renamed Azure DevOps Server in 2019. **TFVC** is centralised: history lives on the server and you check in **changesets**. **Git** gives every clone the full history and cheap branches. The target role's equivalents: GitHub Issues and Projects, GitHub Actions, and AWS CodePipeline with CodeBuild.",
+    "terms": [
+     {
+      "term": "TFVC",
+      "def": "Team Foundation Version Control: centralised version control where the server holds history and each check-in creates a changeset."
+     },
+     {
+      "term": "Work item",
+      "def": "A tracked unit in Azure Boards such as an Epic, Feature, User Story or Task, linkable to commits and pull requests."
+     },
+     {
+      "term": "Branch policy",
+      "def": "Rules on a protected branch, such as required reviewers or a passing build, that a pull request must satisfy to merge."
+     },
+     {
+      "term": "YAML pipeline",
+      "def": "A build and deployment definition stored as code in the repo, organised into stages, jobs and steps."
+     },
+     {
+      "term": "Environment",
+      "def": "An Azure Pipelines deployment target with approvals and checks attached, recording which build was deployed where."
+     },
+     {
+      "term": "Release flow",
+      "def": "Microsoft's trunk-based branching: short-lived topic branches merge to main; release branches are cut per sprint."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "**TFVC vs Git.** TFVC is centralised: you need the server to commit, history is a sequence of numbered **changesets**, branches are server folders and relatively heavy. Git is distributed: every clone holds full history, commits are local, branches are cheap pointers, and code review happens through pull requests. Microsoft recommends Git for new projects; TFVC is still supported but gets no new features. If you migrated or worked in both, say so concretely.\n\n**Boards.** Work items form a hierarchy (Epic, Feature, User Story or Product Backlog Item, Task) depending on the process template (Agile, Scrum, CMMI). Linking commits and PRs to work items gives traceability from requirement to deployment, which an auditor will ask for.\n\n**Pipelines.** YAML pipelines live in the repo as `azure-pipelines.yml`: triggers, then stages, jobs and steps, with templates for reuse. Classic release pipelines are the older UI-defined way. Approvals and checks are configured on **environments**, not in the YAML, so a deployment job to `production` waits for an approver. Credentials come from service connections, ideally via workload identity federation (OIDC) rather than stored secrets.\n\n**Branch policies** on `main`: minimum reviewers, linked work items, resolved comments, a **build validation** pipeline that must pass, and a fixed merge type such as squash.\n\n**Release flow** is Microsoft's own model: short-lived topic branches into `main`, a release branch cut at the end of each sprint, and hotfixes merged into `main` first, then cherry-picked to the release branch so the fix is never lost.\n\n**Mapping for the target role.** Boards become GitHub Issues and Projects; branch policies become rulesets with required reviews and status checks; YAML pipelines become workflows in `.github/workflows` with environments and required reviewers; AWS access uses OIDC to assume an IAM role. CodePipeline and CodeBuild are covered in the AWS pack.",
+    "snippet": "trigger:\n  branches: { include: [ main ] }\npool: { vmImage: ubuntu-latest }\nstages:\n- stage: Build\n  jobs:\n  - job: build\n    steps:\n    - task: UseDotNet@2\n      inputs: { packageType: sdk, version: '10.0.x' }\n    - script: dotnet test -c Release\n    - script: docker build -t payroll-api:$(Build.BuildId) .\n- stage: Production\n  dependsOn: Build\n  jobs:\n  - deployment: deploy\n    environment: production     # approvals and checks live on the environment\n    strategy:\n      runOnce:\n        deploy:\n          steps:\n          - script: ./deploy.sh $(Build.BuildId)",
+    "snippetLang": "text",
+    "source": {
+     "title": "Choose the right version control for your project (Azure Repos)",
+     "url": "https://learn.microsoft.com/en-us/azure/devops/repos/tfvc/comparison-git-tfvc"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.devops-ci.c1",
+     "type": "mc",
+     "prompt": "Which statement correctly contrasts TFVC with Git?",
+     "options": [
+      "In TFVC history lives on the server and each check-in creates a changeset; in Git every clone has full history",
+      "TFVC is distributed and Git is centralised",
+      "TFVC branches are cheaper than Git branches",
+      "Git requires a server connection to commit"
+     ],
+     "answer": 0,
+     "why": "TFVC is centralised: no server, no check-in. Git commits locally and syncs later, which is why branching and offline work are cheap in Git and comparatively heavy in TFVC."
+    },
+    {
+     "id": "cv.devops-ci.c2",
+     "type": "mc",
+     "prompt": "What does the build validation branch policy on main do?",
+     "options": [
+      "Runs a pipeline against the pull request's merge result and blocks completion until it passes",
+      "Rebuilds main every night",
+      "Validates that commit messages reference a work item",
+      "Runs the pipeline only after the PR is merged"
+     ],
+     "answer": 0,
+     "why": "Build validation tests the would-be merge before it lands, so main stays green. Linking work items is a separate policy, which is the tempting confusion."
+    },
+    {
+     "id": "cv.devops-ci.c3",
+     "type": "cloze",
+     "prompt": "Microsoft's own branching model, where short-lived topic branches merge into main and a release branch is cut each sprint, is called ___.",
+     "answer": "release flow",
+     "why": "It is trunk-based development with release branches. Hotfixes go to main first and are cherry-picked to the release branch, so the next release never regresses the fix."
+    },
+    {
+     "id": "cv.devops-ci.c4",
+     "type": "tf",
+     "prompt": "In Azure Pipelines YAML, manual approvals for a production deployment are configured on the environment rather than inside the YAML file.",
+     "answer": true,
+     "why": "Approvals and checks belong to the environment resource, so pipeline authors cannot remove them by editing YAML. GitHub Actions mirrors this with required reviewers on environments."
+    },
+    {
+     "id": "cv.devops-ci.c5",
+     "type": "mc",
+     "prompt": "Moving from Azure Repos to GitHub, what replaces branch policies that require two reviewers and a passing build?",
+     "options": [
+      "Rulesets or branch protection rules with required reviews and required status checks",
+      "A CODEOWNERS file alone",
+      "A GitHub Actions workflow that rejects pushes",
+      "GitHub Projects automation"
+     ],
+     "answer": 0,
+     "why": "Rulesets enforce review counts and required checks at merge time. CODEOWNERS is tempting, but it only decides who must review, and does nothing unless a rule requires code owner review."
+    },
+    {
+     "id": "cv.devops-ci.c6",
+     "type": "cloze",
+     "prompt": "Instead of storing long-lived AWS access keys as pipeline secrets, GitHub Actions and Azure Pipelines can assume an IAM role through ___ federation.",
+     "answer": "OIDC",
+     "why": "The CI provider issues a short-lived signed token, AWS STS trusts that issuer, and the role's trust policy can restrict which repo and branch may assume it. Nothing long-lived is left to leak."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.devops-ci.e1",
+     "seconds": 150,
+     "prompt": "Your CV mentions Azure DevOps with TFS for tasks and Azure DevOps for deployments. Walk me through how a change went from work item to production, and how you would rebuild that on GitHub Actions and AWS.",
+     "modelAnswer": "It started on the board: a user story in the sprint, broken into tasks, planned in sprint planning. (Name the process template you used and whether InterAdria was on TFS on-premises.) A developer created a short-lived branch from main, committed with the work item linked, and opened a pull request. Branch policies required a reviewer, a linked work item and a passing build validation pipeline that compiled and ran the tests. After merge, the pipeline built the artefact, and deployment moved through environments, with an approval before production. (Describe the real Moveo flow, including Docker if it was part of it.)\n\nOn GitHub and AWS the shape stays the same. Issues and Projects replace Boards. Rulesets require reviews and status checks on main. A workflow in .github/workflows runs tests and builds the image, pushes to ECR, and deploys through GitHub environments with required reviewers. AWS credentials come from OIDC federation to an IAM role scoped to the repo and branch, not stored keys. Infrastructure changes go through Terraform plan on the pull request and apply after approval. Alternatively, CodePipeline with CodeBuild does the same inside AWS.",
+     "rubric": [
+      "Traces work item to branch, PR, build, deploy",
+      "Names branch policies: reviewers, linked work items, build validation",
+      "Approvals on environments before production",
+      "Maps to GitHub Issues, rulesets, Actions and environments",
+      "Uses OIDC to assume an AWS role instead of stored keys",
+      "Grounds it in real InterAdria or Moveo practice"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.devops-ci.s1",
+     "situation": "Mid-sprint, a bug in production miscalculates billable hours for a law firm client. Main already contains half-finished work for the next release. You use release flow with a release branch per sprint.",
+     "question": "How do you ship the fix?",
+     "options": [
+      {
+       "text": "Fix it on a short branch from main with a regression test, merge through the normal PR policies, then cherry-pick the commit to the current release branch and deploy that.",
+       "verdict": "best",
+       "why": "Main gets the fix first, so the next release cannot regress it, and production receives only the fix rather than the half-done sprint work."
+      },
+      {
+       "text": "Commit the fix directly to the release branch and deploy; port it to main later.",
+       "verdict": "ok",
+       "why": "It ships fast, but \"port it later\" is how fixes get lost and reappear in the next release."
+      },
+      {
+       "text": "Deploy current main, since it already contains everything.",
+       "verdict": "bad",
+       "why": "It ships unfinished features to a client's billing system to fix one bug."
+      },
+      {
+       "text": "Bypass branch policies to push directly to main because it is urgent.",
+       "verdict": "bad",
+       "why": "Urgent changes are exactly where an unreviewed mistake costs most; the policies are the safety net."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "boss": {
+  "questions": [
+   {
+    "id": "cv.boss.dist-1",
+    "seconds": 180,
+    "prompt": "Design the event flow between two of your microservices so a payment is never processed twice.",
+    "modelOutline": "Name the services: Orders publishes, Payments consumes. Orders writes the order and a PaymentRequested event into an outbox table in one local transaction; a relay publishes it to Kafka keyed by orderId, with the idempotent producer and acks=all. Delivery is still at-least-once, so Payments is an idempotent consumer: it inserts the event id into a processed-events table with a unique constraint in the same transaction as the payment record, and a duplicate becomes a no-op. The call to the payment provider uses the payment id as its idempotency key, so a retry after a timeout cannot charge twice. Offsets are committed after processing; poison messages go to a dead-letter topic after bounded retries. Failures downstream trigger compensation through a saga (refund, cancel order). Monitor consumer lag, DLQ rate and duplicate hits.",
+    "rubric": [
+     "Transactional outbox instead of a dual write",
+     "Kafka key per order for ordering; idempotent producer",
+     "Admits delivery is at-least-once, not exactly-once",
+     "Idempotent consumer with a unique dedupe key in the same transaction",
+     "Idempotency key on the external payment provider call",
+     "Commit offsets after processing; DLQ for poison messages",
+     "Saga or compensation for downstream failure",
+     "Observability: lag, DLQ, duplicate counts"
+    ]
+   },
+   {
+    "id": "cv.boss.dist-2",
+    "seconds": 180,
+    "prompt": "Your stack was .NET, Angular, Kafka, Docker and Azure DevOps. Ours is Python, React, AWS, Terraform and GitHub. Convince me your experience transfers to building secure AI agent services here.",
+    "modelOutline": "Argue from mechanisms, not tools. Clean architecture and service boundaries transfer directly: an agent tool is a service with a contract, and OpenAPI or JSON Schema describes it as it described my REST APIs. Kafka experience maps to streaming document ingestion on MSK or Kinesis with the same partitioning, idempotency and DLQ thinking. Docker multi-stage, non-root images run unchanged on ECS Fargate or Lambda. JWT validation, OAuth with PKCE and claim-based policies become Cognito or Entra tokens and per-user authorization for agents that must act with the user's rights. Azure DevOps branch policies and environments map to GitHub rulesets, Actions environments and OIDC roles. Be honest about gaps (Python depth, Terraform) and the plan to close them, with one concrete example from Alp's own work.",
+    "rubric": [
+     "Leads with transferable mechanisms rather than tool names",
+     "Maps REST and OpenAPI to agent tool contracts",
+     "Maps Kafka patterns to AWS streaming for ingestion",
+     "Maps container practice to ECS or Lambda",
+     "Maps JWT and OAuth to per-user agent authorization",
+     "Maps Azure DevOps to GitHub Actions with OIDC to AWS",
+     "Names gaps honestly with a plan",
+     "Uses one concrete example from his own work"
+    ]
+   }
+  ]
+ }
+}

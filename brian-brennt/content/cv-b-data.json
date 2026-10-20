@@ -1,0 +1,1059 @@
+{
+ "tier": {
+  "id": "cv",
+  "name": "Your CV, line by line",
+  "level": 2,
+  "tease": "You wrote 'Kafka' on your CV. The interviewer asks how consumer groups rebalance. Go."
+ },
+ "nodes": [
+  {
+   "id": "cv.sql-tuning",
+   "title": "SQL Server query tuning",
+   "tease": "Same query, same data, 2 seconds for one user and 40 for the next. What did SQL Server remember?",
+   "primer": {
+    "problem": "A report or screen that was fast last month now times out, and users blame 'the database'. Tuning means finding out why SQL Server chose a slow way to fetch the rows, then giving it a better option: a better index, a rewritten predicate, fresher statistics or a different plan.",
+    "picture": "Think of the optimizer as a route planner. It reads **statistics** (a map of how many rows each value has), estimates the cost of each route and caches the winning **execution plan**. A **clustered index** is the table itself sorted by its key; a **nonclustered index** is a separate sorted list pointing back to it. If the plan's estimated rows are far from the actual rows, the map was wrong, and the route is probably wrong too.",
+    "sketch": "query + parameters\n      │\n      ▼\n optimizer ── reads ──▶ statistics (histogram)\n      │\n      ▼\n cached plan:  Index Seek ─▶ Key Lookup ─▶ Nested Loops\n      │\n      ▼\n compare estimated rows vs actual rows",
+    "terms": [
+     {
+      "term": "Execution plan",
+      "def": "The tree of physical operators (seek, scan, join, sort) SQL Server picked to run a query, with estimated and actual row counts."
+     },
+     {
+      "term": "Covering index",
+      "def": "A nonclustered index holding every column a query needs, via key or INCLUDE columns, so no lookup to the base table happens."
+     },
+     {
+      "term": "SARGable",
+      "def": "Search ARGument-able: a predicate written so the engine can seek an index range instead of evaluating every row."
+     },
+     {
+      "term": "Parameter sniffing",
+      "def": "SQL Server compiles a cached plan using the first parameter values it sees, then reuses that plan for every later value."
+     },
+     {
+      "term": "Statistics",
+      "def": "Per-column histograms of up to 200 steps that the optimizer uses to estimate how many rows a predicate returns."
+     },
+     {
+      "term": "Key lookup",
+      "def": "An extra trip from a nonclustered index into the clustered index to fetch columns the index does not contain."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "Start every diagnosis with the **actual execution plan** plus `SET STATISTICS IO, TIME ON`. Logical reads tell you how much work was done; the gap between **estimated and actual rows** tells you whether the optimizer was misinformed. Query Store shows whether the plan changed and when.\n\nA table has one **clustered index**: the leaf level is the data, ordered by the key, so pick a narrow, ever-increasing, unique key. **Nonclustered indexes** store their key plus the clustered key as a row locator. When a seek finds rows but the query needs other columns, each row costs a **key lookup**; at a few rows that is fine, at 50,000 rows the optimizer flips to a scan. Adding the missing columns with `INCLUDE` makes the index **covering**.\n\nAn index only helps if the predicate is **SARGable**. `WHERE YEAR(OrderDate) = 2024`, `WHERE LEFT(Code,3) = 'ABC'` or comparing a varchar column to an nvarchar parameter wraps the column in a function or implicit conversion, so SQL Server cannot seek. Rewrite as a range on the bare column: `OrderDate >= '2024-01-01' AND OrderDate < '2025-01-01'`.\n\n**Parameter sniffing**: a stored procedure compiled for a tiny customer caches a nested-loops plan; the next call for the biggest customer reuses it and crawls. Options: `OPTION (RECOMPILE)` for infrequent report queries, `OPTIMIZE FOR`, forcing a known-good plan in Query Store, or SQL Server 2022's Parameter Sensitive Plan optimization (compatibility level 160), which caches several plan variants.\n\n**Statistics** go stale after big loads; auto-update triggers on a modification threshold that may not have fired yet. After a bulk load, `UPDATE STATISTICS` on the affected tables is often the whole fix.",
+    "snippet": "-- Not SARGable: function on the column forces a scan\nSELECT OrderId, Total FROM dbo.Orders\nWHERE YEAR(OrderDate) = 2024 AND CustomerId = @cid;\n\n-- SARGable range on the bare column\nSELECT OrderId, Total FROM dbo.Orders\nWHERE OrderDate >= '20240101' AND OrderDate < '20250101'\n  AND CustomerId = @cid;\n\n-- Covering index: seek on keys, Total carried in the leaf\nCREATE NONCLUSTERED INDEX IX_Orders_Customer_Date\n  ON dbo.Orders (CustomerId, OrderDate)\n  INCLUDE (Total);\n\n-- After a big load\nUPDATE STATISTICS dbo.Orders WITH FULLSCAN;",
+    "snippetLang": "sql",
+    "source": {
+     "title": "SQL Server and Azure SQL index architecture and design guide",
+     "url": "https://learn.microsoft.com/en-us/sql/relational-databases/sql-server-index-design-guide"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.sql-tuning.c1",
+     "type": "mc",
+     "prompt": "An actual plan shows an Index Seek estimating 12 rows that returns 480,000, feeding a Nested Loops join. What is the most likely root cause?",
+     "options": [
+      "Stale statistics or a sniffed parameter gave the optimizer a wrong row estimate",
+      "The clustered index is fragmented",
+      "The server needs more CPU cores",
+      "Nested Loops joins are always slower than Hash joins"
+     ],
+     "answer": 0,
+     "why": "A huge estimated-vs-actual gap means the optimizer was misinformed, so it chose a plan suited to 12 rows. Fragmentation affects scan I/O a little but does not explain a 40,000x estimation error."
+    },
+    {
+     "id": "cv.sql-tuning.c2",
+     "type": "mc",
+     "prompt": "Which predicate lets SQL Server seek an index on OrderDate?",
+     "options": [
+      "OrderDate >= '20240101' AND OrderDate < '20250101'",
+      "YEAR(OrderDate) = 2024",
+      "CONVERT(date, OrderDate) BETWEEN ... with OrderDate wrapped in DATEADD",
+      "FORMAT(OrderDate, 'yyyy') = '2024'"
+     ],
+     "answer": 0,
+     "why": "A range on the bare column is SARGable. Wrapping the column in YEAR, DATEADD or FORMAT hides it from the index, forcing a scan that evaluates every row."
+    },
+    {
+     "id": "cv.sql-tuning.c3",
+     "type": "tf",
+     "prompt": "A table can have several clustered indexes as long as their keys differ.",
+     "answer": false,
+     "why": "The clustered index is the table's data ordered by its key, so there can only be one. You can have up to 999 nonclustered indexes, each pointing back to it."
+    },
+    {
+     "id": "cv.sql-tuning.c4",
+     "type": "cloze",
+     "prompt": "Adding non-key columns to a nonclustered index with the ___ clause makes it covering and removes key lookups.",
+     "answer": "INCLUDE",
+     "why": "INCLUDE columns live only in the leaf level, so they widen the index less than adding them to the key and do not affect sort order, yet the query no longer needs the base table."
+    },
+    {
+     "id": "cv.sql-tuning.c5",
+     "type": "mc",
+     "prompt": "A report proc is fast for most customers but slow for the largest one, and fast again after the plan cache is cleared. Which fix is the most targeted?",
+     "options": [
+      "Add OPTION (RECOMPILE) to the statement or force a good plan via Query Store",
+      "Rebuild every index nightly",
+      "Switch the database to SIMPLE recovery",
+      "Add NOLOCK hints to the query"
+     ],
+     "answer": 0,
+     "why": "That pattern is parameter sniffing: the cached plan suits whoever compiled it first. Rebuilding indexes 'fixes' it only by accident, because it invalidates plans; NOLOCK changes isolation, not plan choice."
+    },
+    {
+     "id": "cv.sql-tuning.c6",
+     "type": "cloze",
+     "prompt": "SQL Server 2022 added ___ optimization, which caches multiple plans for one parameterized query depending on parameter values.",
+     "answer": "Parameter Sensitive Plan",
+     "why": "PSP optimization (compatibility level 160) buckets parameter values by cardinality and keeps a plan variant per bucket, the engine's built-in answer to classic parameter sniffing."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.sql-tuning.e1",
+     "prompt": "Your CV says you did performance tuning on SQL Server. Pick one slow query you fixed and walk me through how you found the cause.",
+     "seconds": 150,
+     "modelAnswer": "Frame it with your own case: which screen or report, how slow, who complained. Then the method. First I reproduced it with the real parameters and captured the actual execution plan with SET STATISTICS IO and TIME on, so I had logical reads and elapsed time as a baseline. I looked for the operator with the most reads and for the biggest gap between estimated and actual rows. In my case [name it: a scan caused by a function on a date column / a key lookup repeated thousands of times / a sniffed plan]. The fix was [rewrite the predicate as a range / add a covering index with INCLUDE columns / OPTION RECOMPILE or a Query Store forced plan / update statistics after the load]. I verified by comparing reads and duration before and after with the same parameters, and checked the new index did not hurt writes on that table. The habit I took away: measure first, change one thing, measure again, and never guess from the query text alone.",
+     "rubric": [
+      "Reproduces with real parameters before changing anything",
+      "Uses the actual plan and STATISTICS IO/TIME as evidence",
+      "Names a concrete root cause (SARGability, lookup, sniffing, stats)",
+      "Fix matches the cause, not a generic 'added an index'",
+      "Verifies with before/after numbers and considers write cost"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.sql-tuning.s1",
+     "situation": "The ERP's payroll summary screen jumped from 1 second to 25 seconds the morning after a month-end import added 2 million rows. No code was deployed. The HR lead needs payroll approved by noon.",
+     "question": "What do you do first?",
+     "options": [
+      {
+       "text": "Capture the actual plan, compare estimated and actual rows, and if estimates are off update statistics on the imported tables, then re-test",
+       "verdict": "best",
+       "why": "A large load with no code change points at stale statistics or a plan compiled for the old data. Evidence first, and the fix is fast and low risk before the deadline."
+      },
+      {
+       "text": "Add the missing index that the plan's green hint suggests",
+       "verdict": "ok",
+       "why": "Sometimes right, but missing-index hints ignore existing indexes and write cost; doing it before checking estimates may mask the real stale-statistics cause."
+      },
+      {
+       "text": "Add WITH (NOLOCK) to every table in the query",
+       "verdict": "bad",
+       "why": "NOLOCK does not change the plan shape and introduces dirty and duplicate reads into a payroll figure, which is the last place you want them."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.sql-reporting",
+   "title": "Raw SQL for reports",
+   "tease": "Your report cursors over 80,000 rows. One window function does it in a single pass. Which?",
+   "primer": {
+    "problem": "Business reports need rankings, running totals, month-over-month changes and 'latest row per employee'. Written row by row they are slow and they lock tables that the live app is writing to. The skill is expressing them as one set-based query that reads consistently without blocking users.",
+    "picture": "Think of LINQ versus a foreach loop: you describe the whole set and the engine picks how. **CTEs** are named subqueries that make a long report readable top to bottom. **Window functions** compute per-row values over a group of rows (the window) without collapsing them like GROUP BY does. **Isolation levels** decide what a reader sees while writers are busy; **RCSI** lets readers see the last committed version instead of waiting on locks.",
+    "terms": [
+     {
+      "term": "CTE",
+      "def": "Common Table Expression: a named, query-scoped result set introduced with WITH, readable like a variable, optionally recursive."
+     },
+     {
+      "term": "Window function",
+      "def": "A function with an OVER clause that computes a value per row from a set of related rows, keeping every row."
+     },
+     {
+      "term": "PARTITION BY",
+      "def": "The part of OVER that splits rows into independent groups; the function restarts for each group."
+     },
+     {
+      "term": "RCSI",
+      "def": "Read Committed Snapshot Isolation: readers get the last committed row version instead of waiting on writers' locks."
+     },
+     {
+      "term": "Deadlock",
+      "def": "Two sessions each hold a lock the other needs; SQL Server kills one as victim with error 1205."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "A report query reads best as a pipeline of **CTEs**: filter the period, aggregate, rank, then present. A CTE is not materialised in SQL Server; the optimizer inlines it, so referencing the same CTE twice runs it twice. If you need it reused, use a temp table.\n\n**Window functions** replace most cursors. `ROW_NUMBER() OVER (PARTITION BY EmployeeId ORDER BY ValidFrom DESC)` then `WHERE rn = 1` gives the latest row per employee and is the standard dedupe. `SUM(Amount) OVER (PARTITION BY EmployeeId ORDER BY PayMonth ROWS UNBOUNDED PRECEDING)` is a running total. Specify `ROWS`: with ORDER BY and no frame the default is `RANGE`, which treats ties as one and uses a slower on-disk spool. `LAG(Amount) OVER (... ORDER BY PayMonth)` reads the previous row, so month-over-month change is one expression. Window functions cannot appear in WHERE, which is why you wrap them in a CTE first.\n\n**Set-based versus cursor**: a cursor does one seek and one write per row with per-statement overhead; the set-based version lets the engine pick a single scan, hash or merge. Cursors are only justified for genuinely sequential logic like calling a proc per row.\n\n**Locking**: the default READ COMMITTED takes shared locks, so a long report can block and be blocked by app writes. With **READ_COMMITTED_SNAPSHOT ON** readers see the last committed version from the version store and do not block writers; it is the default in Azure SQL Database. `NOLOCK` is not the same: it reads uncommitted data and can skip or double-count rows during page splits.\n\n**Deadlocks** are captured in the `system_health` Extended Events session (`xml_deadlock_report`). Fixes: access tables in the same order, keep transactions short, add indexes so fewer rows get locked, and retry on error 1205.",
+    "snippet": "WITH monthly AS (\n  SELECT EmployeeId, PayMonth, SUM(Gross) AS Gross\n  FROM dbo.Payslips\n  WHERE PayMonth >= '20250101'\n  GROUP BY EmployeeId, PayMonth\n), ranked AS (\n  SELECT *,\n    LAG(Gross) OVER (PARTITION BY EmployeeId ORDER BY PayMonth) AS PrevGross,\n    SUM(Gross) OVER (PARTITION BY EmployeeId ORDER BY PayMonth\n                     ROWS UNBOUNDED PRECEDING) AS YtdGross,\n    ROW_NUMBER() OVER (PARTITION BY EmployeeId ORDER BY PayMonth DESC) AS rn\n  FROM monthly\n)\nSELECT EmployeeId, PayMonth, Gross, Gross - PrevGross AS Delta, YtdGross\nFROM ranked\nWHERE rn = 1;  -- latest month per employee",
+    "snippetLang": "sql",
+    "source": {
+     "title": "SELECT - OVER clause (Transact-SQL)",
+     "url": "https://learn.microsoft.com/en-us/sql/t-sql/queries/select-over-clause-transact-sql"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.sql-reporting.c1",
+     "type": "mc",
+     "prompt": "You need the most recent contract row per employee from a history table. Which approach is standard?",
+     "options": [
+      "ROW_NUMBER() OVER (PARTITION BY EmployeeId ORDER BY ValidFrom DESC), then filter rn = 1 in an outer query",
+      "GROUP BY EmployeeId with MAX(ValidFrom) and every other column in the SELECT",
+      "A cursor that keeps the last row it saw per employee",
+      "RANK() in the WHERE clause directly"
+     ],
+     "answer": 0,
+     "why": "ROW_NUMBER picks exactly one row per partition and the outer filter keeps it. GROUP BY with MAX gives the date but not the other columns of that row, and window functions are not allowed in WHERE."
+    },
+    {
+     "id": "cv.sql-reporting.c2",
+     "type": "cloze",
+     "prompt": "To compare each month's total with the previous month's in one pass, use the window function ___.",
+     "answer": "LAG",
+     "why": "LAG reads a value from an earlier row in the same partition and order, so month-over-month delta needs no self-join. LEAD looks forward instead."
+    },
+    {
+     "id": "cv.sql-reporting.c3",
+     "type": "tf",
+     "prompt": "In SQL Server, a CTE referenced twice in the same query is computed once and cached.",
+     "answer": false,
+     "why": "SQL Server inlines CTEs like views, so each reference is evaluated separately. If the intermediate result is expensive and reused, materialise it in a temp table."
+    },
+    {
+     "id": "cv.sql-reporting.c4",
+     "type": "mc",
+     "prompt": "A long report query is blocking the ERP's save operations. Which change stops readers and writers blocking each other while still reading only committed data?",
+     "options": [
+      "Enable READ_COMMITTED_SNAPSHOT on the database",
+      "Add WITH (NOLOCK) to the report",
+      "Switch the report to SERIALIZABLE",
+      "Wrap the report in BEGIN TRAN ... COMMIT"
+     ],
+     "answer": 0,
+     "why": "RCSI serves readers the last committed row version, so they take no shared locks. NOLOCK also avoids blocking but reads uncommitted and can miss or double-count rows, which is wrong for figures someone signs off."
+    },
+    {
+     "id": "cv.sql-reporting.c5",
+     "type": "mc",
+     "prompt": "Why write ROWS UNBOUNDED PRECEDING explicitly in a running-total SUM() OVER (ORDER BY ...)?",
+     "options": [
+      "Without it the default frame is RANGE, which lumps tied ORDER BY values together and runs slower",
+      "Without it SQL Server returns an error",
+      "ROWS makes the sum include future rows",
+      "It is required for PARTITION BY to work"
+     ],
+     "answer": 0,
+     "why": "With ORDER BY and no frame the default is RANGE UNBOUNDED PRECEDING, so rows sharing a date get the same total and the engine uses an on-disk worktable. ROWS is per-row and uses a faster in-memory spool."
+    },
+    {
+     "id": "cv.sql-reporting.c6",
+     "type": "tf",
+     "prompt": "When SQL Server detects a deadlock it chooses one session as the victim and rolls back its transaction with error 1205.",
+     "answer": true,
+     "why": "The lock monitor picks the cheapest transaction to roll back (or the one with lower DEADLOCK_PRIORITY). Application code should catch 1205 and retry, and you analyse the graph from the system_health session."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.sql-reporting.e1",
+     "prompt": "Your CV says 'extensive raw SQL for reports'. Why raw SQL instead of Entity Framework for those, and how did you keep reports from hurting the live system?",
+     "seconds": 150,
+     "modelAnswer": "EF Core is great for transactional work: load an aggregate, change it, save. Reports are different: they aggregate many rows, rank, compute running totals and period deltas. LINQ can express some of that, but the generated SQL is hard to control and window functions with explicit frames are clumsy, so for reports I wrote SQL directly, usually as a chain of CTEs with ROW_NUMBER, SUM OVER and LAG, sometimes in stored procedures called from EF with FromSql or Dapper-style mapping. Give your example here: [the government or ERP report, its volume]. To protect the live system I kept everything set-based, made predicates SARGable and indexed for the report's filters, checked the plan with real parameters, and avoided long transactions. For blocking I would use READ COMMITTED SNAPSHOT rather than NOLOCK, because NOLOCK can return rows twice or not at all, which is unacceptable for figures someone signs off. Heavy recurring reports can also run off a readable replica or a scheduled snapshot.",
+     "rubric": [
+      "Clear reason: reports are set-based aggregations EF expresses poorly",
+      "Names window functions and CTEs concretely",
+      "Keeps it set-based, indexed and SARGable",
+      "Prefers RCSI over NOLOCK and says why",
+      "Mentions offloading heavy reports (replica, snapshot, scheduled)"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.sql-reporting.s1",
+     "situation": "A colleague's month-end payroll report uses a cursor over 80,000 payslips to compute year-to-date gross per employee. It takes 9 minutes and HR runs it several times while correcting data.",
+     "question": "How do you approach the rewrite?",
+     "options": [
+      {
+       "text": "Replace the cursor with one query using SUM() OVER (PARTITION BY EmployeeId ORDER BY PayMonth ROWS UNBOUNDED PRECEDING), and diff the output against the old report before switching",
+       "verdict": "best",
+       "why": "Set-based with an explicit frame is one pass, and diffing against the old output proves the payroll numbers did not change, which matters more than speed."
+      },
+      {
+       "text": "Keep the cursor but make it FAST_FORWARD and add an index",
+       "verdict": "ok",
+       "why": "It helps somewhat, but it keeps per-row overhead and leaves the core problem in place."
+      },
+      {
+       "text": "Move the calculation into C# by loading all payslips into memory",
+       "verdict": "bad",
+       "why": "It ships 80,000 rows over the wire to do what the engine does natively, and creates a second source of truth for payroll logic."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.ssrs-reports",
+   "title": "SSRS reports",
+   "tease": "SQL Server 2025 shipped without a new SSRS. So where do your RDL reports live now?",
+   "primer": {
+    "problem": "Government clients and finance teams want fixed-layout, printable reports: payslips, tender summaries, monthly statements, exported to PDF or Excel and emailed on a schedule. Building these by hand in a web app is slow; a report server renders them from a query and a layout file.",
+    "picture": "SSRS is like a Razor view engine that runs on its own server. An **RDL** file is the template (XML layout), a **dataset** is the query that feeds it, **parameters** are the inputs the user picks. The **report server** stores reports in its catalog database, renders them to HTML, PDF or Excel, and **subscriptions** run them on a schedule through SQL Server Agent and email the result. In 2026 its successor on-premises is **Power BI Report Server**.",
+    "terms": [
+     {
+      "term": "RDL",
+      "def": "Report Definition Language: the XML file describing a report's data sources, datasets, parameters and layout."
+     },
+     {
+      "term": "Paginated report",
+      "def": "A pixel-precise, page-oriented report designed for printing or PDF, the kind SSRS produces."
+     },
+     {
+      "term": "Dataset",
+      "def": "The query or stored procedure inside a report that returns the rows a table or chart displays."
+     },
+     {
+      "term": "Subscription",
+      "def": "A scheduled delivery that renders a report and sends it by email or to a file share."
+     },
+     {
+      "term": "Power BI Report Server",
+      "def": "Microsoft's on-premises report portal that hosts paginated RDL reports plus interactive Power BI reports."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "An SSRS installation has a **report server** (web service plus web portal) and two databases: `ReportServer`, the catalog holding reports, data sources, schedules and security, and `ReportServerTempDB` for sessions and cached results. You author an `.rdl` in Report Builder or a Visual Studio Report Server Project and deploy it to a folder.\n\nInside the RDL, a **data source** holds the connection (shared ones are reused across reports), and each **dataset** is a query or stored procedure. Report **parameters** map to query parameters; a parameter's available values can come from another dataset, which is how cascading drop-downs work (pick a department, then an employee). Multi-value parameters arrive in SQL as a list for `IN (@Dept)`. Keep the logic in a stored procedure so it is tuned and versioned like any other SQL.\n\n**Subscriptions** render on a schedule and deliver via email or file share; each schedule is a SQL Server Agent job, so no Agent, no subscriptions. **Data-driven subscriptions**, where recipients and parameters come from a query, are an Enterprise feature. For performance you can cache reports or keep **snapshots**; the `ExecutionLog3` view records who ran which report, with which parameters and how long it took, useful both for tuning and as an audit trail.\n\nWhere it stands in 2026: Microsoft released **no new SSRS with SQL Server 2025**. On-premises reporting is consolidated into **Power BI Report Server**, which hosts the same RDL paginated reports plus Power BI reports and is now included with paid SQL Server 2025 licences (Enterprise and Standard), no longer only Enterprise with Software Assurance. SSRS 2022 remains supported until January 2033. In the cloud, the equivalent is paginated reports in the Power BI service (Fabric). So your RDL skills transfer; the hosting product changed.",
+    "source": {
+     "title": "Reporting Services consolidation FAQ",
+     "url": "https://learn.microsoft.com/en-us/sql/reporting-services/reporting-services-consolidation-faq"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.ssrs-reports.c1",
+     "type": "mc",
+     "prompt": "What happened to SSRS with SQL Server 2025?",
+     "options": [
+      "No new SSRS version shipped; on-premises reporting is consolidated into Power BI Report Server",
+      "SSRS 2025 shipped with a new React-based portal",
+      "SSRS was removed and RDL reports no longer run anywhere",
+      "SSRS became an Azure-only service"
+     ],
+     "answer": 0,
+     "why": "Microsoft stopped releasing SSRS after 2022 and points customers to Power BI Report Server, which renders the same RDL paginated reports. RDL did not die; only the hosting product changed."
+    },
+    {
+     "id": "cv.ssrs-reports.c2",
+     "type": "tf",
+     "prompt": "SSRS subscriptions depend on SQL Server Agent, because each schedule is created as an Agent job.",
+     "answer": true,
+     "why": "The report server creates Agent jobs for schedules. If Agent is stopped, or you use an edition without it like Express, subscriptions silently stop firing."
+    },
+    {
+     "id": "cv.ssrs-reports.c3",
+     "type": "cloze",
+     "prompt": "A report layout, its datasets and parameters are stored in an XML file with the extension ___.",
+     "answer": ".rdl",
+     "why": "RDL (Report Definition Language) is the portable artefact: the same file deploys to SSRS, Power BI Report Server or the Power BI service as a paginated report."
+    },
+    {
+     "id": "cv.ssrs-reports.c4",
+     "type": "mc",
+     "prompt": "How do you build cascading parameters (choose a department, then only its employees appear)?",
+     "options": [
+      "Give the Employee parameter an available-values dataset that filters by @Department",
+      "Write JavaScript in the report portal",
+      "Use two separate reports linked by a URL",
+      "Use a data-driven subscription"
+     ],
+     "answer": 0,
+     "why": "A parameter's available values can come from a dataset that itself takes an earlier parameter, so SSRS refreshes the list when the first value changes. Subscriptions are about delivery, not interactivity."
+    },
+    {
+     "id": "cv.ssrs-reports.c5",
+     "type": "mc",
+     "prompt": "Which SSRS catalog view tells you who ran which report, with which parameters and how long rendering took?",
+     "options": [
+      "ExecutionLog3",
+      "sys.dm_exec_requests",
+      "ReportServerTempDB.Sessions",
+      "msdb.dbo.sysjobhistory"
+     ],
+     "answer": 0,
+     "why": "ExecutionLog3 in the ReportServer database splits time into data retrieval, processing and rendering, so you know whether to tune the query or the layout. sysjobhistory only shows Agent job outcomes."
+    },
+    {
+     "id": "cv.ssrs-reports.c6",
+     "type": "tf",
+     "prompt": "With SQL Server 2025, Power BI Report Server is still limited to Enterprise edition customers with Software Assurance.",
+     "answer": false,
+     "why": "Microsoft broadened access: paid SQL Server 2025 licences, including Standard, get Power BI Report Server. Previously it required Enterprise plus Software Assurance or Power BI Premium."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.ssrs-reports.e1",
+     "prompt": "You list SSRS reports. Describe how one of your reports was built end to end, and what you would use for the same need today.",
+     "seconds": 150,
+     "modelAnswer": "Pick your real report: what it showed, for which client, how often. Structurally it was an RDL authored in Visual Studio or Report Builder, with a shared data source to SQL Server and a dataset calling a stored procedure, because I wanted the SQL tuned and versioned with the rest of the database. Parameters such as period and department mapped to proc parameters, with available values from small lookup datasets so the lists cascaded. The layout used a tablix with grouping for subtotals, and users exported to PDF or Excel. If it was scheduled, a subscription delivered it by email, which runs as a SQL Server Agent job. For slow renders, ExecutionLog3 shows whether time goes into data retrieval or rendering. Today: Microsoft shipped no new SSRS with SQL Server 2025, so on-premises I would host the same RDL on Power BI Report Server, which now comes with paid SQL Server licences; in the cloud, paginated reports in Power BI. The RDL and SQL skills carry over directly.",
+     "rubric": [
+      "Describes data source, dataset (ideally a stored procedure) and parameters",
+      "Mentions layout/grouping and export formats",
+      "Knows subscriptions run via SQL Server Agent",
+      "Knows SSRS 2022 is the last release and PBIRS is the successor",
+      "Mentions a cloud option (Power BI paginated reports)"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.ssrs-reports.s1",
+     "situation": "A government client running SSRS 2022 asks whether they must rewrite 120 RDL reports because 'SSRS is being discontinued'. They are planning a SQL Server 2025 upgrade next year on-premises.",
+     "question": "What do you advise?",
+     "options": [
+      {
+       "text": "Explain SSRS 2022 is supported until 2033, and that Power BI Report Server hosts the same RDL files; pilot a handful of reports on PBIRS before planning the migration",
+       "verdict": "best",
+       "why": "Accurate on support dates, avoids a needless rewrite, and a pilot surfaces the few incompatibilities before committing."
+      },
+      {
+       "text": "Stay on SSRS 2022 indefinitely and ignore the change",
+       "verdict": "ok",
+       "why": "Safe until 2033, but leaves them without a plan and stuck on an end-of-line product."
+      },
+      {
+       "text": "Rewrite all reports as custom Angular pages with a PDF library",
+       "verdict": "bad",
+       "why": "Large cost and risk to reproduce pixel-precise paginated output that the successor product already renders."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.postgres-vs-mssql",
+   "title": "PostgreSQL vs SQL Server",
+   "tease": "In Postgres an UPDATE never overwrites a row. So where does the old one go, and who cleans it up?",
+   "primer": {
+    "problem": "At Moveo some services ran on PostgreSQL next to SQL Server. Interviewers want to know you understand what actually differs underneath, not just syntax, and when you would pick each. For an AI role, PostgreSQL also matters because pgvector can hold RAG embeddings next to ordinary data.",
+    "picture": "SQL Server by default updates rows in place and uses locks so readers wait; turn on RCSI and it keeps old versions in a side store. PostgreSQL always works like that: every UPDATE writes a **new row version** in the table itself, and readers see whichever version their snapshot allows. The price is **dead tuples** that **VACUUM** must clean. Extensions bolt on features like plugins in .NET: **pgvector** adds a vector type and similarity indexes.",
+    "sketch": "UPDATE salary = 5000\n  table heap:  [v1 salary=4000 (dead)]  [v2 salary=5000 (live)]\n                     │\n  old snapshot still sees v1 until it ends\n                     │\n  VACUUM later marks v1's space reusable",
+    "terms": [
+     {
+      "term": "MVCC",
+      "def": "Multi-Version Concurrency Control: writers create new row versions so readers see a consistent snapshot without locking."
+     },
+     {
+      "term": "Dead tuple",
+      "def": "An old row version no transaction can still see, occupying space until VACUUM reclaims it."
+     },
+     {
+      "term": "VACUUM",
+      "def": "PostgreSQL maintenance that marks dead tuples' space reusable and protects against transaction ID wraparound; autovacuum runs it automatically."
+     },
+     {
+      "term": "JSONB",
+      "def": "PostgreSQL's binary JSON column type, indexable with GIN and queryable with operators like @> for containment."
+     },
+     {
+      "term": "pgvector",
+      "def": "An open-source PostgreSQL extension adding a vector column type, distance operators and HNSW or IVFFlat indexes."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "**Concurrency.** SQL Server's default READ COMMITTED uses locks; RCSI or SNAPSHOT add row versioning kept in a version store. PostgreSQL is MVCC all the way down: an UPDATE writes a new tuple and marks the old one dead, readers never block writers. The cost is bloat. **Autovacuum** reclaims dead tuples and freezes old transaction IDs; if it falls behind on a hot table, the table and its indexes grow and queries slow. A long-open transaction pins old versions so VACUUM cannot remove them, a classic production incident. Also, PostgreSQL tables are heaps: there is no clustered index that keeps rows ordered.\n\n**JSONB** stores parsed binary JSON. A GIN index supports containment queries like `metadata @> '{\"matter\":\"M-42\"}'`. SQL Server stores JSON as text with JSON_VALUE and computed-column indexes (SQL Server 2025 adds a native json type), so PostgreSQL is the more natural home for semi-structured data.\n\n**Extensions** are first-class: PostGIS, pg_trgm, pg_stat_statements and **pgvector**. pgvector adds `vector(n)`, operators `<->` (L2), `<=>` (cosine distance) and `<#>` (negative inner product), and approximate indexes **HNSW** (better recall/speed, slower build) or **IVFFlat**. For RAG this means chunks, embeddings, matter ids and permissions live in one transactional store, filtered with plain WHERE clauses; Aurora PostgreSQL can serve as a Bedrock Knowledge Bases vector store.\n\n**When to choose it:** no licence cost, strong on Linux and every cloud, rich types and extensions, vectors next to relational data. Choose SQL Server when the estate, tooling (SSRS, SSIS, Agent), skills and licences are already Microsoft-centric. Small gotchas: identifiers fold to lowercase, `LIMIT` instead of `TOP`, and `ILIKE` for case-insensitive matching.",
+    "snippet": "CREATE EXTENSION IF NOT EXISTS vector;\n\nCREATE TABLE chunks (\n  id        bigserial PRIMARY KEY,\n  matter_id text NOT NULL,\n  body      text NOT NULL,\n  meta      jsonb,\n  embedding vector(1024)\n);\nCREATE INDEX ON chunks USING hnsw (embedding vector_cosine_ops);\nCREATE INDEX ON chunks USING gin (meta);\n\n-- top 5 chunks for one matter, cosine distance\nSELECT id, body\nFROM chunks\nWHERE matter_id = 'M-42'\nORDER BY embedding <=> $1\nLIMIT 5;",
+    "snippetLang": "sql",
+    "source": {
+     "title": "PostgreSQL documentation: Routine Vacuuming",
+     "url": "https://www.postgresql.org/docs/current/routine-vacuuming.html"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.postgres-vs-mssql.c1",
+     "type": "mc",
+     "prompt": "A PostgreSQL table with heavy updates keeps growing on disk even though the row count is stable. What is the most likely cause?",
+     "options": [
+      "Autovacuum is not keeping up, or a long-running transaction prevents dead tuples from being removed",
+      "The clustered index is fragmented",
+      "JSONB columns are compressed badly",
+      "The WAL is stored inside the table"
+     ],
+     "answer": 0,
+     "why": "Every update leaves a dead tuple; if VACUUM cannot reclaim them the table bloats. PostgreSQL has no clustered index, so the SQL Server-style fragmentation answer is the tempting wrong one."
+    },
+    {
+     "id": "cv.postgres-vs-mssql.c2",
+     "type": "tf",
+     "prompt": "In PostgreSQL, readers do not block writers and writers do not block readers under the default isolation level.",
+     "answer": true,
+     "why": "MVCC gives each statement a snapshot of committed versions, so plain SELECTs take no row locks that conflict with UPDATEs. SQL Server needs RCSI or SNAPSHOT to behave this way."
+    },
+    {
+     "id": "cv.postgres-vs-mssql.c3",
+     "type": "cloze",
+     "prompt": "In pgvector, the operator ___ returns cosine distance between two vectors.",
+     "answer": "<=>",
+     "why": "<-> is Euclidean (L2) distance, <#> is negative inner product, <=> is cosine distance. The index operator class (vector_cosine_ops) must match the operator or the index is not used."
+    },
+    {
+     "id": "cv.postgres-vs-mssql.c4",
+     "type": "mc",
+     "prompt": "Which index type speeds up JSONB containment queries such as meta @> '{\"status\":\"open\"}'?",
+     "options": [
+      "GIN",
+      "B-tree on the whole column",
+      "HNSW",
+      "Hash"
+     ],
+     "answer": 0,
+     "why": "GIN indexes every key and value inside the document, which is what containment needs. A B-tree compares whole values, and HNSW is for vector similarity."
+    },
+    {
+     "id": "cv.postgres-vs-mssql.c5",
+     "type": "mc",
+     "prompt": "For a RAG feature where each chunk must be filtered by matter and user permissions before similarity ranking, what is a strong argument for pgvector?",
+     "options": [
+      "Embeddings, metadata and permission data live in one transactional database and filter with ordinary SQL",
+      "pgvector is always faster than any dedicated vector engine",
+      "PostgreSQL needs no indexes for vectors",
+      "It removes the need to chunk documents"
+     ],
+     "answer": 0,
+     "why": "Keeping vectors beside relational data makes permission filtering and consistency simple. Dedicated engines like OpenSearch may scale better for huge corpora or hybrid keyword search, so 'always faster' is wrong."
+    },
+    {
+     "id": "cv.postgres-vs-mssql.c6",
+     "type": "cloze",
+     "prompt": "pgvector's ___ index builds a layered proximity graph and usually gives better speed-recall trade-offs than IVFFlat, at the cost of slower builds.",
+     "answer": "HNSW",
+     "why": "HNSW (Hierarchical Navigable Small World) needs no training step and handles inserts well; IVFFlat clusters vectors into lists and should be built after data is loaded."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.postgres-vs-mssql.e1",
+     "prompt": "You used both SQL Server and PostgreSQL at Moveo. What is the most important difference under the hood, and when would you choose PostgreSQL?",
+     "seconds": 150,
+     "modelAnswer": "The deepest difference is concurrency. SQL Server by default uses locking read committed, so long reads and writes can block each other unless you enable RCSI, which keeps row versions in a version store. PostgreSQL is MVCC by design: an update writes a new row version in the table and leaves the old one dead, readers see a snapshot and never block writers. The trade-off is that VACUUM must clean dead tuples, and long-open transactions or a lagging autovacuum cause bloat. Also, Postgres tables are heaps, there is no clustered index. I would choose PostgreSQL when licence cost and Linux or cloud portability matter, when the data is semi-structured and JSONB with GIN fits, or when I want extensions, especially pgvector to keep RAG embeddings next to metadata and permissions in one transactional store. I would stay with SQL Server when the client's tooling, reporting and team are already Microsoft-centric. Then add your own example: [which Moveo service used Postgres and why].",
+     "rubric": [
+      "Explains MVCC vs locking default correctly",
+      "Mentions VACUUM/dead tuples and bloat risk",
+      "Notes heap tables / no clustered index",
+      "Gives concrete reasons to choose Postgres (cost, JSONB, extensions)",
+      "Connects pgvector to RAG with metadata filtering"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.postgres-vs-mssql.s1",
+     "situation": "A law firm client wants a first RAG prototype over 200,000 document chunks, each tagged with matter id and access group. They already run PostgreSQL on Amazon RDS for their matter system. Budget is tight and the demo is in three weeks.",
+     "question": "Where do you store the embeddings?",
+     "options": [
+      {
+       "text": "Add pgvector to a PostgreSQL instance, store chunks with matter and access columns, HNSW index, and filter by permissions in the same query",
+       "verdict": "best",
+       "why": "Reuses a database they already operate, scales comfortably to this size, and makes permission filtering plain SQL, which matters most for a law firm."
+      },
+      {
+       "text": "Stand up Amazon OpenSearch Service for vectors and keep metadata in PostgreSQL",
+       "verdict": "ok",
+       "why": "Valid and better for hybrid keyword search at scale, but adds a second system to sync and secure for a three-week prototype."
+      },
+      {
+       "text": "Keep embeddings in a Python list in memory and filter permissions in the UI",
+       "verdict": "bad",
+       "why": "Nothing persists, and filtering permissions in the UI means privileged chunks already reached the model or the client."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.mongo-modelling",
+   "title": "MongoDB document modelling",
+   "tease": "You embedded every comment in the post. One viral post later, writes fail. What limit hit?",
+   "primer": {
+    "problem": "MongoDB lets you store whole objects as documents, which is fast to build with, but a bad shape hurts later: documents grow without limit, updates touch many places, reports need joins MongoDB is weak at. Defending it on your CV means knowing how to model, index and query it, and when to avoid it.",
+    "picture": "A document is like a C# object graph serialised to JSON (BSON) and stored as one unit. **Embedding** is putting a child list inside the parent object; **referencing** is storing only an id, like a foreign key without enforcement. Rule of thumb: model for how the app reads. Data read together and bounded in size gets embedded; data shared, unbounded or updated independently gets referenced. The **aggregation pipeline** is like chained LINQ operators over a collection.",
+    "terms": [
+     {
+      "term": "BSON",
+      "def": "Binary JSON, MongoDB's storage format; adds types like ObjectId, Date and Decimal128 and caps a document at 16 MB."
+     },
+     {
+      "term": "Embedding",
+      "def": "Storing related data inside the parent document, so one read returns everything and one write is atomic."
+     },
+     {
+      "term": "Referencing",
+      "def": "Storing another document's _id instead of its contents, resolved by a second query or $lookup."
+     },
+     {
+      "term": "Aggregation pipeline",
+      "def": "An ordered list of stages like $match, $group and $lookup that transforms documents step by step."
+     },
+     {
+      "term": "ESR rule",
+      "def": "Compound index ordering guideline: Equality fields first, then Sort fields, then Range fields."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "**Embed vs reference.** Embed when the child belongs to the parent, is read with it and stays bounded: an order with its line items, an employee with their addresses. A single-document write is atomic, so embedding also gives you consistency for free. Reference when the child list grows without bound (comments, audit events, log lines), when the data is shared by many parents (a product used in many orders), or when it is updated on its own schedule. Unbounded arrays are the classic mistake: documents cap at **16 MB**, and long before that every update rewrites a big document. Patterns like **subset** (embed the latest 10, reference the rest) and **bucket** (group time series by hour) sit in between.\n\n**Indexes** are B-trees like SQL Server's. Compound index order follows **ESR**: equality, then sort, then range. Indexing an array field creates a **multikey** index. **TTL** indexes expire documents after a time, **partial** indexes cover only matching documents. Use `explain('executionStats')` and look for `COLLSCAN` and the ratio of documents examined to returned.\n\nThe **aggregation pipeline** chains stages: put `$match` (and `$sort` on an indexed field) first so indexes are used, then `$group`, `$project`, `$lookup` for joins, `$unwind` for arrays. `$lookup` exists but is not a relational engine; heavy joins hint at the wrong database.\n\n**Transactions**: multi-document ACID transactions exist since 4.0 on replica sets and 4.2 on sharded clusters, with a default 60-second lifetime. They work, but needing them everywhere suggests your model should be relational.\n\n**When not to use it:** strongly relational data with cross-entity invariants and ad-hoc reporting, like payroll or accounting. For an AI stack, MongoDB Atlas adds `$vectorSearch`, but the modelling questions stay the same.",
+    "snippet": "// Embed: bounded, read together\n{ _id: ObjectId(\"...\"), orderNo: \"T-2025-118\", status: \"open\",\n  lines: [ { sku: \"A1\", qty: 2, price: NumberDecimal(\"19.90\") } ] }\n\n// Reference: unbounded, own lifecycle\n{ _id: ObjectId(\"...\"), orderId: ObjectId(\"...\"), at: ISODate(\"...\"), event: \"approved\" }\n\n// ESR: equality (status), sort (createdAt), range (total)\ndb.orders.createIndex({ status: 1, createdAt: -1, total: 1 })\n\ndb.orders.aggregate([\n  { $match: { status: \"open\" } },\n  { $unwind: \"$lines\" },\n  { $group: { _id: \"$lines.sku\", qty: { $sum: \"$lines.qty\" } } },\n  { $sort: { qty: -1 } }, { $limit: 10 }\n])",
+    "snippetLang": "typescript",
+    "source": {
+     "title": "MongoDB Manual: Data Modeling",
+     "url": "https://www.mongodb.com/docs/manual/data-modeling/"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.mongo-modelling.c1",
+     "type": "mc",
+     "prompt": "Which data is the best candidate for embedding inside its parent document?",
+     "options": [
+      "An invoice's line items, always read with the invoice and limited in number",
+      "Every audit event ever recorded for a user",
+      "Product details shared by thousands of orders",
+      "Chat messages in a channel that never closes"
+     ],
+     "answer": 0,
+     "why": "Bounded, owned and read together is the embedding sweet spot. Audit events and chat messages grow without bound toward the 16 MB cap, and shared product data would need updating in thousands of places."
+    },
+    {
+     "id": "cv.mongo-modelling.c2",
+     "type": "cloze",
+     "prompt": "A single MongoDB document cannot exceed ___ in size.",
+     "answer": "16 MB",
+     "why": "The BSON document limit is 16 MB. Unbounded embedded arrays hit performance problems long before that, because each update rewrites a growing document."
+    },
+    {
+     "id": "cv.mongo-modelling.c3",
+     "type": "mc",
+     "prompt": "A query filters status = 'open', sorts by createdAt and filters total > 100. Which compound index order follows the ESR rule?",
+     "options": [
+      "{ status: 1, createdAt: -1, total: 1 }",
+      "{ total: 1, status: 1, createdAt: -1 }",
+      "{ createdAt: -1, total: 1, status: 1 }",
+      "{ status: 1, total: 1, createdAt: -1 }"
+     ],
+     "answer": 0,
+     "why": "Equality first narrows to one contiguous range, sort next lets the index deliver order without an in-memory sort, range last. Putting the range before the sort is the tempting mistake and forces a blocking sort."
+    },
+    {
+     "id": "cv.mongo-modelling.c4",
+     "type": "tf",
+     "prompt": "MongoDB supports multi-document ACID transactions on replica sets and sharded clusters.",
+     "answer": true,
+     "why": "Since 4.0 on replica sets and 4.2 on sharded clusters. They carry overhead and a default 60-second limit, so a model that needs them on every write is a sign the data is relational."
+    },
+    {
+     "id": "cv.mongo-modelling.c5",
+     "type": "mc",
+     "prompt": "Why should $match come as early as possible in an aggregation pipeline?",
+     "options": [
+      "So it can use an index and reduce documents before expensive stages like $group or $lookup",
+      "Because $match is not allowed after $group",
+      "Because the pipeline runs stages in reverse order",
+      "So results are returned sorted"
+     ],
+     "answer": 0,
+     "why": "An initial $match can use indexes like a find(); later stages work on in-memory documents. $match after $group is allowed (it acts like HAVING), it just cannot use the collection's indexes."
+    },
+    {
+     "id": "cv.mongo-modelling.c6",
+     "type": "tf",
+     "prompt": "A payroll system with strict cross-table invariants and frequent ad-hoc finance reports is a natural fit for MongoDB.",
+     "answer": false,
+     "why": "Payroll is relational: employees, contracts, periods and payslips with constraints and joins, plus ad-hoc reporting. That is SQL Server or PostgreSQL territory, which is why the ERP's payroll stays relational."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.mongo-modelling.e1",
+     "prompt": "Your CV lists MongoDB at Moveo. What did you store there rather than in SQL Server or PostgreSQL, and how did you decide the document shape?",
+     "seconds": 150,
+     "modelAnswer": "Start with your real case: [which service, what kind of data]. The reason to choose MongoDB was that the data was document-shaped: read and written as a whole, with a schema that varies per record, and little need for cross-entity joins or ad-hoc reporting. For the shape I modelled around the access pattern. Things always read with the parent and bounded in size were embedded, so one read serves the screen and one write is atomic. Things that grow without bound or are shared, such as events or history, went into their own collection with a reference, because of the 16 MB limit and because rewriting big documents on each update is slow. Indexes followed the queries using equality, sort, range order, and I checked explain output for collection scans. I would not put payroll or tender approvals there: those need relational constraints and reporting, so they stayed in SQL Server. MongoDB transactions exist, but if I needed them on every write I would take that as a sign the data belongs in a relational store.",
+     "rubric": [
+      "Names a concrete use and why documents fit it",
+      "Embed vs reference decided by access pattern and growth",
+      "Mentions the 16 MB limit or unbounded arrays",
+      "Index design follows queries (ESR, explain)",
+      "States when not to use MongoDB"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.mongo-modelling.s1",
+     "situation": "A tender module stores each tender as a MongoDB document with an embedded array of every bid revision and every status change. Large tenders now take seconds to save and one write failed with a document-size error.",
+     "question": "How do you fix the model?",
+     "options": [
+      {
+       "text": "Move bid revisions and status history into separate collections referencing the tender id, keep only current bids and status embedded, and index the history by tenderId and time",
+       "verdict": "best",
+       "why": "Splits the unbounded parts out while keeping the common read cheap: the subset pattern. History becomes an append-only collection, which is also the right shape for an audit trail."
+      },
+      {
+       "text": "Compress the array with a custom serializer",
+       "verdict": "ok",
+       "why": "Delays the size error but every save still rewrites a growing document; the model is still wrong."
+      },
+      {
+       "text": "Split each tender across several documents with numbered suffixes when it gets large",
+       "verdict": "bad",
+       "why": "Ad hoc sharding of one entity makes every read and update complex and breaks single-document atomicity, the main reason to embed."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.redis-caching",
+   "title": "Redis caching",
+   "tease": "Redis is full. Your default policy is noeviction. What does the next write get back?",
+   "primer": {
+    "problem": "Microservices hit the same database rows again and again: user permissions, lookup lists, session data. Redis keeps hot data in memory so responses are fast and the database breathes. But a cache brings its own questions: what happens when memory fills, when data changes, when Redis restarts, and who owns the licence.",
+    "picture": "Redis is a networked `Dictionary<string, T>` living in RAM, where T can be a string, hash, list, set, sorted set or stream, each with atomic commands. In **cache-aside**, your service checks Redis first, falls back to SQL on a miss and writes the result with a **TTL**. When memory reaches `maxmemory`, the **eviction policy** decides what gets dropped. **RDB** snapshots and the **AOF** log decide what survives a restart.",
+    "sketch": "GET user:42:perms ──hit──▶ return\n      │ miss\n      ▼\n SELECT ... FROM SQL Server\n      │\n      ▼\n SET user:42:perms <json> EX 300 ──▶ return\n\n on update: write SQL, then DEL user:42:perms",
+    "terms": [
+     {
+      "term": "Cache-aside",
+      "def": "The application reads the cache first, loads from the database on a miss and stores the result itself."
+     },
+     {
+      "term": "TTL",
+      "def": "Time to live: seconds until Redis deletes a key automatically, set with EX on SET or with EXPIRE."
+     },
+     {
+      "term": "Eviction policy",
+      "def": "The maxmemory-policy setting that decides which keys Redis removes when memory is full, or whether writes fail instead."
+     },
+     {
+      "term": "RDB / AOF",
+      "def": "Redis persistence: RDB writes point-in-time snapshots, AOF appends every write command to a log for replay."
+     },
+     {
+      "term": "Valkey",
+      "def": "A Linux Foundation fork of Redis 7.2.4 under the BSD licence, created after Redis changed licence in 2024."
+     },
+     {
+      "term": "Fencing token",
+      "def": "A number that increases with each lock grant, letting the protected resource reject writes from an older lock holder."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "**Data structures** are the point of Redis: hashes for objects, sorted sets for leaderboards and rate windows, lists and streams for queues, sets for membership, plus HyperLogLog and bitmaps. Redis 8 also folds JSON, the query engine and vector sets into the core.\n\n**Cache-aside**: read Redis, on a miss load from the database and `SET key value EX 300`. On writes, update the database then **delete** the key rather than updating it, which avoids races leaving stale data. Add TTL jitter so keys do not expire together, and protect hot keys from a **stampede** with a short lock or early refresh.\n\n**Eviction**: the default `maxmemory-policy` is `noeviction`, so a full Redis returns OOM errors on writes. For a pure cache use `allkeys-lru` or `allkeys-lfu` (LFU keeps frequently used keys, better for skewed traffic). `volatile-*` policies only evict keys that have a TTL, useful when the same instance also holds keys that must not vanish. LRU is approximated by sampling keys, not a perfect list.\n\n**Persistence**: RDB forks and writes a compact snapshot, fast restarts but you lose writes since the last one. AOF logs every write; with `appendfsync everysec` you lose at most about a second. Many run both, or neither for a pure cache.\n\n**Locks**: `SET lock:job token NX PX 30000`, release with a Lua script that deletes only if the token matches. Caveat: a GC pause longer than the expiry lets two holders run; Redlock does not fix that. Use fencing tokens, or let the database enforce correctness.\n\n**Licence**: BSD until March 2024, then RSALv2/SSPLv1 from 7.4, which is not open source. The Linux Foundation forked **Valkey** from 7.2.4 under BSD, backed by AWS and Google. In May 2025 Redis 8 added **AGPLv3** as a third option. AWS ElastiCache and MemoryDB now offer Valkey.",
+    "snippet": "# cache-aside read\nGET user:42:perms                 # (nil) -> miss\nSET user:42:perms '{\"roles\":[\"hr\"]}' EX 300\n\n# invalidate after a DB write\nDEL user:42:perms\n\n# pure cache: evict any key, least frequently used\nCONFIG SET maxmemory 2gb\nCONFIG SET maxmemory-policy allkeys-lfu\n\n# lock with owner token and expiry\nSET lock:payroll-run 9f2c NX PX 30000\n# release only if we still own it (Lua)\nEVAL \"if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end\" 1 lock:payroll-run 9f2c",
+    "snippetLang": "bash",
+    "source": {
+     "title": "Redis docs: Key eviction",
+     "url": "https://redis.io/docs/latest/develop/reference/eviction/"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.redis-caching.c1",
+     "type": "mc",
+     "prompt": "Redis is used purely as a cache and hits maxmemory. Which eviction policy fits best?",
+     "options": [
+      "allkeys-lru or allkeys-lfu",
+      "noeviction",
+      "volatile-ttl with no TTLs set",
+      "Disable maxmemory"
+     ],
+     "answer": 0,
+     "why": "For a pure cache any key may go, so evict the least recently or least frequently used. noeviction (the default) makes writes fail with OOM, and volatile-* policies evict nothing if keys have no TTL."
+    },
+    {
+     "id": "cv.redis-caching.c2",
+     "type": "cloze",
+     "prompt": "Redis's default maxmemory-policy is ___, which returns errors on writes when memory is full.",
+     "answer": "noeviction",
+     "why": "The default protects data that must not vanish but surprises teams using Redis as a cache. Setting maxmemory and an eviction policy is a deliberate decision you should be able to defend."
+    },
+    {
+     "id": "cv.redis-caching.c3",
+     "type": "mc",
+     "prompt": "In cache-aside, after updating a row in SQL Server, what should the service usually do with the cached copy?",
+     "options": [
+      "Delete the key so the next read reloads fresh data",
+      "Leave it until the TTL expires",
+      "Update the cache first, then the database",
+      "Flush the whole Redis database"
+     ],
+     "answer": 0,
+     "why": "Deleting after the DB write is simple and avoids races where two writers leave an older value cached. Waiting for TTL serves stale data, and updating the cache before the DB can cache a value that then fails to commit."
+    },
+    {
+     "id": "cv.redis-caching.c4",
+     "type": "tf",
+     "prompt": "With AOF and appendfsync everysec, a crash can lose roughly the last second of writes.",
+     "answer": true,
+     "why": "Redis fsyncs the log once per second, the usual balance between durability and throughput. RDB-only can lose everything since the last snapshot, possibly minutes."
+    },
+    {
+     "id": "cv.redis-caching.c5",
+     "type": "mc",
+     "prompt": "Which statement about Redis licensing is correct as of 2026?",
+     "options": [
+      "Redis 8 is available under AGPLv3 alongside RSALv2 and SSPLv1; Valkey is a BSD-licensed fork of 7.2.4",
+      "Redis has always been BSD licensed",
+      "Redis 7.4 onward is Apache 2.0",
+      "Valkey is owned by Redis Ltd."
+     ],
+     "answer": 0,
+     "why": "Redis moved from BSD to RSALv2/SSPLv1 in March 2024, which triggered the Linux Foundation's Valkey fork; in May 2025 Redis 8 added AGPLv3 as an open-source option."
+    },
+    {
+     "id": "cv.redis-caching.c6",
+     "type": "cloze",
+     "prompt": "Because a lock holder can pause past its lock's expiry, a safe design passes a ___ to the protected resource so stale holders are rejected.",
+     "answer": "fencing token",
+     "why": "Expiry-based locks cannot guarantee mutual exclusion across GC pauses or network delays. A monotonically increasing token lets the database refuse writes from an older holder."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.redis-caching.e1",
+     "prompt": "You list Redis. What did you cache, what is your eviction policy and why, and what happens when the cached data changes?",
+     "seconds": 150,
+     "modelAnswer": "Name your real case: [what you cached at Moveo, e.g. lookups, permissions or sessions, and roughly how hot]. The pattern was cache-aside: the service reads Redis, on a miss loads from SQL Server or Postgres and stores the result with a TTL, with some jitter so keys do not all expire together. When data changes, the service writes the database first and then deletes the key, so the next read repopulates; I prefer delete over update because it avoids races. For eviction: Redis defaults to noeviction, which makes writes fail when memory is full. For a pure cache I set maxmemory and allkeys-lru, or allkeys-lfu when a few keys dominate traffic. If the same instance held data that must not disappear, I would use volatile-lru so only TTL keys are evicted, or better, separate instances. Persistence for a cache can be off or RDB only; if Redis holds sessions I would add AOF with everysec. And for anything correctness-critical, the database stays the source of truth.",
+     "rubric": [
+      "Describes cache-aside with TTL",
+      "Invalidation: write DB then delete key, with reasoning",
+      "Knows default is noeviction and picks a policy with a reason",
+      "Distinguishes allkeys vs volatile policies",
+      "Mentions persistence choice matching the use"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.redis-caching.s1",
+     "situation": "Two instances of the payroll service run a nightly payroll calculation, and you must ensure only one runs it. A teammate proposes a Redis lock with SET NX PX 60000. Runs sometimes take 3 minutes.",
+     "question": "What do you recommend?",
+     "options": [
+      {
+       "text": "Use the lock only as a first filter, and enforce exclusivity in the database too (a unique run-per-period row or fencing token), so a second runner cannot commit results",
+       "verdict": "best",
+       "why": "Expiry-based locks can be held by two processes after a pause or a long run; making the database reject duplicates gives real correctness for payroll."
+      },
+      {
+       "text": "Raise the expiry to 10 minutes and keep the Redis lock as the only guard",
+       "verdict": "ok",
+       "why": "Reduces the risk for current run times but any slow run or pause beyond 10 minutes still allows double execution."
+      },
+      {
+       "text": "Use SET NX without an expiry so the lock never times out",
+       "verdict": "bad",
+       "why": "If the holder crashes, the lock is never released and payroll silently never runs again until someone deletes the key."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.elastic-opensearch",
+   "title": "Elasticsearch to OpenSearch",
+   "tease": "Your CV says Elasticsearch. Their stack says OpenSearch. Same thing, or a trap?",
+   "primer": {
+    "problem": "Users want to type a few words and find the right record across millions, ranked by relevance and tolerant of word forms, which a SQL LIKE cannot do. The target role at ISA uses OpenSearch for retrieval in RAG over legal documents, so your Elasticsearch experience must transfer cleanly and you must know where the two differ.",
+    "picture": "An **inverted index** is the index at the back of a book: each term points to the documents containing it. An **analyzer** decides what counts as a term (lowercase, split, stem). **BM25** scores matches. An index is split into **shards** spread across nodes, each with **replicas**. Vectors add a second index type: **kNN** finds documents whose embeddings are nearest the query's. **Hybrid search** merges both rankings. OpenSearch is the Apache-licensed fork of Elasticsearch 7.10.2 with the same core.",
+    "terms": [
+     {
+      "term": "Inverted index",
+      "def": "A map from each term to the list of documents and positions where it appears, the core of full-text search."
+     },
+     {
+      "term": "Analyzer",
+      "def": "Character filters, a tokenizer and token filters that turn text into the terms stored and searched."
+     },
+     {
+      "term": "BM25",
+      "def": "The default relevance formula: rewards rare terms and repeated matches, with diminishing returns and document-length normalisation."
+     },
+     {
+      "term": "Shard",
+      "def": "A self-contained Lucene index holding part of an Elasticsearch or OpenSearch index; primaries are fixed at creation."
+     },
+     {
+      "term": "Mapping",
+      "def": "The schema of an index: each field's type, such as text, keyword, date or vector, and its analyzer."
+     },
+     {
+      "term": "Hybrid search",
+      "def": "Combining keyword (BM25) and vector (kNN) results into one ranking, for example with reciprocal rank fusion."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "**Inverted index and analyzers.** At index time a `text` field runs through an analyzer: the standard analyzer tokenises on word boundaries and lowercases; language analyzers add stemming and stop words. The same analyzer runs on the query, so 'Contracts' matches 'contract'. A `keyword` field is stored as one exact term, used for filters, sorting and aggregations. A common mapping is both: `title` as text with a `title.raw` keyword subfield.\n\n**Mappings** should be explicit; dynamic mapping guesses types and can explode field counts. You cannot change an existing field's type: create a new index and `_reindex`, with an **alias** so the switch is invisible to the app.\n\n**BM25** is the default similarity: term frequency with saturation (k1 = 1.2), inverse document frequency, and length normalisation (b = 0.75).\n\n**Shards and replicas.** Primary shard count is fixed at creation (split or shrink aside); replicas can change any time and are never placed on the same node as their primary. Avoid many tiny shards. Search is near real time: new documents become visible after a refresh, every second by default.\n\n**Vectors.** Elasticsearch uses `dense_vector` with an HNSW index and the `knn` search option; hybrid ranking uses the RRF retriever. OpenSearch uses `knn_vector` from its k-NN plugin, engines Faiss or Lucene, and hybrid search via the `hybrid` query plus a search pipeline that normalises and combines scores.\n\n**The fork.** In 2021 Elastic moved from Apache 2.0 to SSPL and the Elastic License; AWS forked 7.10.2 as **OpenSearch** (Apache 2.0). Since 2024 it is governed by the OpenSearch Software Foundation under the Linux Foundation, and OpenSearch 3.0 (2025) moved to Lucene 10. Elastic added AGPLv3 in 2024. Query DSL is largely shared; clients, built-in security, Dashboards versus Kibana and vector APIs differ. Amazon OpenSearch Serverless is a common vector store for Bedrock Knowledge Bases.",
+    "snippet": "PUT legal-chunks\n{\n  \"settings\": { \"index.knn\": true, \"number_of_shards\": 3, \"number_of_replicas\": 1 },\n  \"mappings\": { \"properties\": {\n    \"matter_id\": { \"type\": \"keyword\" },\n    \"body\":      { \"type\": \"text\", \"analyzer\": \"english\" },\n    \"embedding\": { \"type\": \"knn_vector\", \"dimension\": 1024,\n      \"method\": { \"name\": \"hnsw\", \"engine\": \"faiss\", \"space_type\": \"innerproduct\" } }\n  } }\n}\n\nGET legal-chunks/_search?search_pipeline=hybrid-norm\n{ \"query\": { \"hybrid\": { \"queries\": [\n  { \"match\": { \"body\": \"indemnity cap\" } },\n  { \"knn\": { \"embedding\": { \"vector\": [0.12, -0.03], \"k\": 20 } } }\n] } } }",
+    "snippetLang": "json",
+    "source": {
+     "title": "OpenSearch documentation: Vector search",
+     "url": "https://docs.opensearch.org/latest/vector-search/"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.elastic-opensearch.c1",
+     "type": "mc",
+     "prompt": "You need to filter by exact matter number and also aggregate by it. How should matter_id be mapped?",
+     "options": [
+      "keyword",
+      "text with the standard analyzer",
+      "text with the english analyzer",
+      "dense_vector"
+     ],
+     "answer": 0,
+     "why": "keyword stores the value as one exact term, which filters, sorts and aggregates correctly. A text field would be tokenised, so 'M-2026-0418' could split into pieces and match the wrong matters."
+    },
+    {
+     "id": "cv.elastic-opensearch.c2",
+     "type": "tf",
+     "prompt": "You can increase the number of replica shards of an existing index at any time, but not freely change its number of primary shards.",
+     "answer": true,
+     "why": "Replicas are copies and can be added or removed live. Primaries define how documents are routed, so changing them needs split/shrink or a reindex into a new index."
+    },
+    {
+     "id": "cv.elastic-opensearch.c3",
+     "type": "mc",
+     "prompt": "Why was OpenSearch created?",
+     "options": [
+      "Elastic moved Elasticsearch from Apache 2.0 to SSPL and the Elastic License in 2021, so AWS forked version 7.10.2 under Apache 2.0",
+      "Elasticsearch could not run on AWS",
+      "To add vector search, which Elasticsearch never supported",
+      "Elastic sold Elasticsearch to Amazon"
+     ],
+     "answer": 0,
+     "why": "The 2021 licence change is the origin. Both now support vector search; OpenSearch is governed by the OpenSearch Software Foundation under the Linux Foundation since 2024."
+    },
+    {
+     "id": "cv.elastic-opensearch.c4",
+     "type": "cloze",
+     "prompt": "Elasticsearch and OpenSearch rank full-text matches by default with the ___ similarity algorithm.",
+     "answer": "BM25",
+     "why": "BM25 replaced classic TF-IDF as the default in Elasticsearch 5.0 and OpenSearch inherited it; it saturates term frequency and normalises for document length."
+    },
+    {
+     "id": "cv.elastic-opensearch.c5",
+     "type": "mc",
+     "prompt": "In RAG over legal documents, why combine BM25 with vector kNN search?",
+     "options": [
+      "Vectors capture meaning while BM25 catches exact terms like clause numbers, party names and case citations that embeddings blur",
+      "BM25 is needed to compute embeddings",
+      "kNN cannot return more than one result",
+      "Hybrid search removes the need for permission filters"
+     ],
+     "answer": 0,
+     "why": "Embeddings are good at paraphrase but weak on rare exact tokens; lawyers search for exactly those. Hybrid search still needs permission filters, so the last option is a dangerous misconception."
+    },
+    {
+     "id": "cv.elastic-opensearch.c6",
+     "type": "cloze",
+     "prompt": "To change a field's type without downtime, create a new index with the new mapping, reindex, and switch an ___ to point at it.",
+     "answer": "alias",
+     "why": "The application queries the alias, so the cut-over is atomic. Field types cannot be changed in place because existing segments were built with the old type."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.elastic-opensearch.e1",
+     "prompt": "You used Elasticsearch at Moveo. We use OpenSearch. Explain how full-text search works under the hood, and what changes for you moving to OpenSearch.",
+     "seconds": 150,
+     "modelAnswer": "Under the hood both are Lucene. At index time each text field runs through an analyzer, character filters, a tokenizer and token filters such as lowercase and stemming, and the resulting terms go into an inverted index, a map from term to the documents containing it. Queries run through the same analyzer, look up postings lists and score with BM25, which rewards rare terms and repeated matches but normalises for document length. Keyword fields store exact values for filters and aggregations. An index is split into primary shards fixed at creation plus replicas for availability and read throughput. Then your case: [what you indexed at Moveo and why]. Moving to OpenSearch: it is the Apache-licensed fork of Elasticsearch 7.10.2 from 2021, now under the Linux Foundation, so mappings, analyzers and most query DSL transfer. The differences are the clients, security as a built-in plugin, Dashboards instead of Kibana, and vectors: knn_vector with Faiss or Lucene engines and hybrid search through a normalisation search pipeline, which is what RAG retrieval at ISA would use.",
+     "rubric": [
+      "Explains analyzer to inverted index to BM25 correctly",
+      "Distinguishes text vs keyword",
+      "Explains shards and replicas",
+      "Knows OpenSearch is the 2021 fork of 7.10.2 and why",
+      "Names concrete differences, especially knn_vector and hybrid search"
+     ]
+    },
+    {
+     "id": "cv.elastic-opensearch.e2",
+     "prompt": "How would you design retrieval in OpenSearch for a RAG assistant over a law firm's documents?",
+     "seconds": 120,
+     "modelAnswer": "One index of chunks, each with the text, a knn_vector embedding, and keyword metadata: matter id, document id, access groups, privilege flag, dates. Explicit mappings, an English analyzer on the body and an alias so I can reindex when the chunking or embedding model changes. Retrieval is hybrid: a BM25 match on the body, because lawyers search for exact clause numbers, names and citations, plus a kNN query on the embedding, combined through a search pipeline that normalises and merges scores, or reciprocal rank fusion. Permission filters on matter and access group are applied inside the query, as filters on both sub-queries, never after retrieval, so privileged chunks never reach the model. I would log each query with the returned chunk ids and scores for the audit trail, and evaluate recall on a labelled question set before tuning k, chunk size or weights.",
+     "rubric": [
+      "Chunk index with vector plus keyword metadata",
+      "Hybrid BM25 + kNN with a stated fusion method",
+      "Permission filtering inside the query, not after",
+      "Alias/reindex plan for model or chunking changes",
+      "Logging for audit and an evaluation set"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.elastic-opensearch.s1",
+     "situation": "A law firm's RAG prototype on OpenSearch uses pure vector kNN. Associates complain that searching for 'clause 14.2(b)' or a specific party name returns loosely related passages instead of the exact clause.",
+     "question": "What do you change?",
+     "options": [
+      {
+       "text": "Add a BM25 match on the text field and combine it with kNN via a hybrid query and normalisation pipeline, then measure on a set of real associate queries",
+       "verdict": "best",
+       "why": "Exact tokens are BM25's strength and embeddings' weakness; hybrid search fixes both query types, and an evaluation set proves it."
+      },
+      {
+       "text": "Switch to a larger embedding model",
+       "verdict": "ok",
+       "why": "May help a little, but embeddings still blur exact identifiers like clause numbers, and it costs a full re-embed."
+      },
+      {
+       "text": "Increase k from 10 to 200 and let the LLM find the right clause",
+       "verdict": "bad",
+       "why": "Floods the context with noise, raises cost and latency, and still may not retrieve the exact clause."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "boss": {
+  "questions": [
+   {
+    "id": "cv.boss.data-1",
+    "prompt": "A report query that took 2 seconds now takes 40 seconds after a large data load. Nothing was deployed. Walk me through diagnosing and fixing it.",
+    "seconds": 180,
+    "modelOutline": "Reproduce with the real parameters and capture the actual execution plan with STATISTICS IO and TIME, so there is a baseline. Check Query Store: did the plan change after the load? Compare estimated and actual rows on the expensive operators; a large gap after a load usually means stale statistics, since auto-update thresholds may not have fired, or a plan sniffed for an unrepresentative parameter. Update statistics on the loaded tables and re-test. If the plan is still poor, look for scans caused by non-SARGable predicates or implicit conversions, and key lookups that grew with the data; fix with a covering index or rewrite. For sniffing, use OPTION RECOMPILE for the report or force the known-good plan in Query Store. Also rule out blocking from the load itself, which RCSI avoids for readers. Verify with before and after numbers and add a post-load statistics step so it does not recur.",
+    "rubric": [
+     "Reproduces with real parameters and captures the actual plan",
+     "Uses Query Store or plan history to see if the plan changed",
+     "Compares estimated vs actual rows",
+     "Identifies stale statistics after the load and updates them",
+     "Checks SARGability, implicit conversions, key lookups",
+     "Knows parameter sniffing fixes (RECOMPILE, forced plan)",
+     "Rules out blocking from the load",
+     "Verifies and prevents recurrence (post-load stats job)"
+    ]
+   },
+   {
+    "id": "cv.boss.data-2",
+    "prompt": "Your CV lists SQL Server, PostgreSQL, MongoDB, Redis and Elasticsearch. For a RAG assistant over a law firm's documents with a full audit trail, which of these would you use, for what, and why not the others?",
+    "seconds": 180,
+    "modelOutline": "Map each store to a job. Relational system of record (SQL Server or PostgreSQL) for matters, users, permissions and the audit trail, append-only with request id, user, retrieved chunk ids and model id. Retrieval in OpenSearch, the Apache-licensed fork of Elasticsearch, with hybrid BM25 plus kNN because lawyers search exact clauses and names, and permission filters inside the query. Alternatively pgvector in PostgreSQL for a smaller corpus, keeping vectors next to permissions in one transactional store. Redis only as a cache for permissions or embeddings of frequent queries, never as the source of truth, with a clear eviction policy and short TTLs so revoked access does not linger. MongoDB is not needed unless document metadata is truly schemaless; the relational store and the search index cover it. Close with operational cost: fewer systems to secure in a regulated client is a feature.",
+    "rubric": [
+     "Assigns a relational store as system of record for permissions and audit",
+     "Picks OpenSearch or pgvector for retrieval with reasons",
+     "Hybrid search justified by exact legal terms",
+     "Permission filtering inside retrieval",
+     "Redis only as cache, with TTL concern for revoked access",
+     "Justifies leaving MongoDB out (or a narrow role)",
+     "Mentions audit trail contents",
+     "Weighs operational and security cost of more systems"
+    ]
+   }
+  ]
+ }
+}

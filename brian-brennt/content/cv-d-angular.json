@@ -1,0 +1,1098 @@
+{
+  "tier": {
+    "id": "cv",
+    "name": "Your CV, line by line",
+    "level": 2,
+    "tease": "You wrote 'Kafka' on your CV. The interviewer asks how consumer groups rebalance. Go."
+  },
+  "nodes": [
+    {
+      "id": "cv.ng-rxjs",
+      "title": "RxJS in Angular",
+      "tease": "A type-ahead fires five requests and the slowest reply lands last, overwriting the right one. Fix?",
+      "primer": {
+        "problem": "An Angular screen juggles many asynchronous events at once: keystrokes, HTTP replies, SignalR pushes, route changes. Handled naively, an old reply overwrites a newer one, double clicks submit twice, and subscriptions keep running after the user has left the screen, leaking memory. RxJS gives one vocabulary to combine, cancel and clean up these streams.",
+        "picture": "An **Observable** is like a Kafka topic you subscribe to lazily: nothing flows until someone subscribes, and each subscriber is its own consumer. Operators are LINQ for events (`map`, `filter`, `debounceTime`). **Higher-order** operators decide what happens when every event starts its own inner stream, such as an HTTP call: cancel the old one, run all in parallel, queue them, or ignore new ones while busy. A **Subject** is a topic you can also publish to. **Signals** hold current state synchronously; `toSignal` bridges the two worlds.",
+        "sketch": "keys:  a----ab----abc------------->\n          switchMap(term => http.get(term))\ninner: [a..X\n            [ab..X\n                  [abc........]\nout:   ---------------------- hits(abc)\nX = inner request cancelled (unsubscribed)",
+        "terms": [
+          {
+            "term": "Observable",
+            "def": "A lazy stream of values over time that starts producing only when something subscribes to it."
+          },
+          {
+            "term": "Higher-order mapping operator",
+            "def": "An operator such as switchMap that maps each value to an inner Observable and decides how inner streams overlap."
+          },
+          {
+            "term": "Subject / BehaviorSubject",
+            "def": "An Observable you can also push values into; a BehaviorSubject additionally remembers its latest value for new subscribers."
+          },
+          {
+            "term": "takeUntilDestroyed",
+            "def": "An Angular rxjs-interop operator that completes a stream automatically when the surrounding component or service is destroyed."
+          },
+          {
+            "term": "async pipe",
+            "def": "A template pipe that subscribes to an Observable, renders its latest value and unsubscribes when the view is destroyed."
+          },
+          {
+            "term": "toSignal",
+            "def": "An Angular function that subscribes to an Observable and exposes its latest value as a read-only signal."
+          }
+        ]
+      },
+      "lesson": {
+        "body": "The four higher-order mapping operators all take each outer value and turn it into an inner Observable, usually an HTTP call. They differ only in what happens when a new outer value arrives while an inner one is still running. **switchMap** unsubscribes from the old inner stream, which cancels the HTTP request: right for search boxes and route parameters, where only the latest answer matters. **mergeMap** runs all inner streams in parallel, so replies can come back in any order: fine for independent fire-and-forget work. **concatMap** queues them and runs one at a time in order: right for writes that must not overtake each other. **exhaustMap** ignores new outer values while one inner stream is busy: right for a Save or Login button that users double click.\n\nSubjects are the push side. A plain `Subject` gives late subscribers nothing from the past; a `BehaviorSubject` replays its current value, which is why services used them as hand-rolled stores before signals.\n\nLeaks come from subscriptions that outlive their component. HttpClient calls complete on their own, but `valueChanges`, intervals and SignalR streams never do. Prefer not subscribing at all: the `async` pipe or `toSignal` both unsubscribe when the view dies. When you must call `subscribe`, add `takeUntilDestroyed()` inside an injection context, or pass it a `DestroyRef`.\n\nModern Angular uses signals for state and RxJS for events over time. `toSignal` and `toObservable` from `@angular/core/rxjs-interop` connect them. React mapping: switchMap is what you hand-build in `useEffect` with an `AbortController` that aborts the previous fetch in the cleanup function; TanStack Query does it for you.",
+        "snippet": "@Component({\n  selector: 'app-employee-search',\n  imports: [ReactiveFormsModule],\n  template: `\n    <input [formControl]=\"term\" placeholder=\"Search employees\">\n    @for (e of hits(); track e.id) { <li>{{ e.name }}</li> }\n  `,\n})\nexport class EmployeeSearchComponent {\n  private http = inject(HttpClient);\n  term = new FormControl('', { nonNullable: true });\n\n  hits = toSignal(\n    this.term.valueChanges.pipe(\n      debounceTime(300),\n      distinctUntilChanged(),\n      switchMap(q => this.http\n        .get<Employee[]>('/api/employees', { params: { q } })\n        .pipe(catchError(() => of([])))),\n    ),\n    { initialValue: [] as Employee[] },\n  );\n}",
+        "snippetLang": "typescript",
+        "source": {
+          "title": "RxJS interop with Angular signals (angular.dev)",
+          "url": "https://angular.dev/ecosystem/rxjs-interop"
+        }
+      },
+      "cards": [
+        {
+          "id": "cv.ng-rxjs.c1",
+          "type": "mc",
+          "prompt": "Users double click 'Submit payroll run'. You want the first click to call the API and further clicks ignored until that call finishes. Which operator?",
+          "options": [
+            "exhaustMap",
+            "switchMap",
+            "concatMap",
+            "mergeMap"
+          ],
+          "answer": 0,
+          "why": "exhaustMap drops new outer values while the inner call is busy. switchMap is the tempting wrong pick: it cancels the first request on the client, but the server may already have processed it, so you risk a half-seen duplicate."
+        },
+        {
+          "id": "cv.ng-rxjs.c2",
+          "type": "mc",
+          "prompt": "You must upload 20 scanned contracts one after another, strictly in the order the user selected them. Which operator?",
+          "options": [
+            "concatMap",
+            "mergeMap",
+            "switchMap",
+            "exhaustMap"
+          ],
+          "answer": 0,
+          "why": "concatMap queues inner Observables and subscribes to the next only when the previous completes, preserving order. mergeMap would upload in parallel and finish in arbitrary order."
+        },
+        {
+          "id": "cv.ng-rxjs.c3",
+          "type": "tf",
+          "prompt": "An HttpClient GET Observable completes by itself after emitting the response, so a forgotten subscription to it does not stay alive forever.",
+          "answer": true,
+          "why": "HttpClient emits once and completes. The real leak sources are endless streams like valueChanges, interval or a SignalR hub, though a late HTTP callback can still touch a destroyed component."
+        },
+        {
+          "id": "cv.ng-rxjs.c4",
+          "type": "cloze",
+          "prompt": "Called inside an injection context such as a constructor, the operator ___ completes a stream automatically when the component is destroyed.",
+          "answer": "takeUntilDestroyed()",
+          "why": "It reads DestroyRef from the injection context, replacing the old pattern of a destroy$ Subject plus takeUntil in ngOnDestroy. Outside an injection context you must pass a DestroyRef explicitly."
+        },
+        {
+          "id": "cv.ng-rxjs.c5",
+          "type": "mc",
+          "prompt": "A component subscribes to a service's user stream after the user has already logged in. It should immediately receive the current user. What should the service expose?",
+          "options": [
+            "A BehaviorSubject (or a signal) holding the current user",
+            "A plain Subject that emits on login",
+            "An EventEmitter on the service",
+            "A Promise resolved at login"
+          ],
+          "answer": 0,
+          "why": "A BehaviorSubject replays its latest value to every new subscriber, as a signal always has a current value. A plain Subject only delivers values emitted after you subscribe, so the late component sees nothing."
+        },
+        {
+          "id": "cv.ng-rxjs.c6",
+          "type": "tf",
+          "prompt": "toSignal() created in a component's field initializer unsubscribes from its source Observable when that component is destroyed.",
+          "answer": true,
+          "why": "toSignal registers cleanup with the DestroyRef of the injection context it runs in. That is why it must be called in an injection context or be given an injector."
+        }
+      ],
+      "explain": [
+        {
+          "id": "cv.ng-rxjs.e1",
+          "prompt": "Your CV says you built Angular components with RxJS. Explain switchMap, mergeMap, concatMap and exhaustMap, and give a real use case for each from your own projects.",
+          "seconds": 150,
+          "modelAnswer": "All four take each outer value and map it to an inner Observable, usually an HTTP call; they differ in what happens when a new value arrives while the previous inner call is still running. switchMap cancels the old one and keeps only the latest, so I use it for type-ahead search and for reloading a detail view when the route id changes. mergeMap runs everything in parallel with no ordering guarantee, which suits independent work like loading several widgets at once. concatMap queues and preserves order, which I would use for sequential writes such as saving rows that depend on each other. exhaustMap ignores new values while busy, which is the right guard against double submits on a Save or Login button. The wrong choice causes real bugs: switchMap on a save can cancel a request the server already processed. In React I would get the switchMap effect with an AbortController in the useEffect cleanup, or let TanStack Query handle it. [Name the screen in Moveo's ERP where you used each.]",
+          "rubric": [
+            "States the shared shape: outer value mapped to inner Observable",
+            "switchMap cancels previous, with a search or route example",
+            "concatMap preserves order; mergeMap runs in parallel",
+            "exhaustMap ignores while busy, double-submit example",
+            "Names a bug caused by the wrong operator",
+            "Ties at least one example to a real project"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "cv.ng-rxjs.s1",
+          "situation": "In an ERP with HR and payroll modules, HR staff report that the browser tab slows down over a working day. You find dashboard components that call subscribe() on a SignalR notification stream and on form valueChanges in ngOnInit, with no cleanup. Users switch between screens dozens of times a day.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Confirm the leak with a heap snapshot, then remove manual subscribes where possible (async pipe or toSignal) and add takeUntilDestroyed() to the rest; add a lint rule against bare subscribe in components.",
+              "verdict": "best",
+              "why": "It proves the cause, fixes it with the idiomatic tools that clean up automatically, and prevents regressions at review time."
+            },
+            {
+              "text": "Store each Subscription in a field and call unsubscribe() in ngOnDestroy in every affected component.",
+              "verdict": "ok",
+              "why": "It fixes the leak, but it is verbose and easy to forget on the next component; takeUntilDestroyed or the async pipe make cleanup the default."
+            },
+            {
+              "text": "Convert the SignalR stream and valueChanges to Promises with firstValueFrom so nothing stays subscribed.",
+              "verdict": "bad",
+              "why": "firstValueFrom takes only the first value, so the screen stops receiving notifications and form changes; it breaks the feature to hide the leak."
+            },
+            {
+              "text": "Ask users to refresh the page at lunchtime and raise the issue as a browser limitation.",
+              "verdict": "bad",
+              "why": "It blames the platform for a code defect and leaves memory and duplicate handlers growing with every navigation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cv.ng-ngrx",
+      "title": "NgRx and app state",
+      "tease": "You put NgRx on the CV. The interviewer asks: for a three-field form, why would you ever?",
+      "primer": {
+        "problem": "Several screens show and change the same data: the logged-in user, the list of open tenders, the status of a payroll run. If each component fetches and edits its own copy, the copies drift apart and a bug report like 'the count was wrong for a second' cannot be reproduced. A store gives one source of truth with traceable changes.",
+        "picture": "NgRx is Redux built on RxJS; in .NET terms it is CQRS with event sourcing. Components **dispatch actions** (events). Pure **reducers** fold each action into a new immutable state, like replaying an event log. **Effects** handle side effects such as HTTP calls, like a MediatR handler, and dispatch success or failure actions. **Selectors** are memoized queries over the state, like an indexed SQL view. Redux DevTools can replay every action. **SignalStore** is the lighter, signal-based sibling for feature state.",
+        "sketch": "component --dispatch(action)--> Store\n                                  |\n              reducer(state, action) -> new state\n                                  |\n              effect: action -> HTTP -> success/failure action\n                                  |\ncomponent <--selectSignal(selector)-- memoized view of state",
+        "terms": [
+          {
+            "term": "Action",
+            "def": "A plain object describing something that happened, with a type string like '[Tenders] Load Success' and an optional payload."
+          },
+          {
+            "term": "Reducer",
+            "def": "A pure function taking current state and an action and returning a new state object without mutating the old one."
+          },
+          {
+            "term": "Effect",
+            "def": "An NgRx class or function that listens for actions, performs side effects such as HTTP, and emits new actions."
+          },
+          {
+            "term": "Selector",
+            "def": "A memoized function that derives data from the store and recomputes only when its inputs change."
+          },
+          {
+            "term": "SignalStore",
+            "def": "NgRx's signal-based state container from @ngrx/signals, built from features like withState, withComputed and withMethods."
+          },
+          {
+            "term": "Redux DevTools",
+            "def": "A browser extension that shows every dispatched action and state snapshot and lets you step back through them."
+          }
+        ]
+      },
+      "lesson": {
+        "body": "The NgRx loop is strict on purpose. A component never changes state directly; it dispatches an action that describes an event, ideally named by source and meaning, such as `[Tender Page] Opened`. The reducer, created with `createReducer` and `on()`, is a pure function: same state and action in, same new state out, no HTTP, no `Date.now()`, no mutation. Because it returns new object references, change detection and selectors can compare by reference instead of deep comparison.\n\nSide effects live in **effects**. An effect listens with `ofType`, calls an API, and maps the result to a success or failure action. Two classic bugs: picking the wrong mapping operator (switchMap for loads, concatMap or exhaustMap for writes), and putting `catchError` on the outer stream, which completes the effect after the first error so it never fires again. Catch inside the inner pipe.\n\n**Selectors** built with `createSelector` are memoized: they recompute only when an input selector returns a new reference. That is why mutation in a reducer is doubly bad: the store changes but the selector returns stale data. In current NgRx, `store.selectSignal(selector)` hands the component a signal.\n\nNgRx pays off when state is shared across many routes, changes come from several sources (user, server push, polling), and you want DevTools time travel. It is overkill for local UI state, a single feature screen, or form state, which reactive forms already own. Lighter options: a service exposing signals, or **SignalStore** scoped to a feature or component. React mapping: Redux Toolkit is the same pattern (reselect is the same memoized selector), while Zustand plays the role of SignalStore.",
+        "snippet": "export const TenderActions = createActionGroup({\n  source: 'Tenders',\n  events: {\n    'Load': emptyProps(),\n    'Load Success': props<{ tenders: Tender[] }>(),\n    'Load Failure': props<{ error: string }>(),\n  },\n});\n\nexport const loadTenders = createEffect(\n  (actions$ = inject(Actions), api = inject(TenderApi)) =>\n    actions$.pipe(\n      ofType(TenderActions.load),\n      switchMap(() => api.list().pipe(\n        map(tenders => TenderActions.loadSuccess({ tenders })),\n        catchError(e => of(TenderActions.loadFailure({ error: e.message }))),\n      )),\n    ),\n  { functional: true },\n);\nexport const selectOpenTenders = createSelector(\n  selectAllTenders,\n  tenders => tenders.filter(t => t.status === 'open'),\n);",
+        "snippetLang": "typescript",
+        "source": {
+          "title": "NgRx Store guide (ngrx.io)",
+          "url": "https://ngrx.io/guide/store"
+        }
+      },
+      "cards": [
+        {
+          "id": "cv.ng-ngrx.c1",
+          "type": "mc",
+          "prompt": "In an NgRx app, where does the HTTP call that loads tenders belong?",
+          "options": [
+            "In an effect that listens for the load action and dispatches success or failure",
+            "In the reducer's on() handler for the load action",
+            "In the selector, so data loads on first read",
+            "In the component, which then dispatches the result"
+          ],
+          "answer": 0,
+          "why": "Effects isolate side effects so reducers stay pure and replayable. Calling the API in the component works but scatters loading logic and error handling across screens."
+        },
+        {
+          "id": "cv.ng-ngrx.c2",
+          "type": "tf",
+          "prompt": "A reducer may call an API as long as it still returns the new state synchronously.",
+          "answer": false,
+          "why": "Reducers must be pure: no I/O, no randomness, no mutation. Otherwise replaying actions in DevTools or tests gives different results."
+        },
+        {
+          "id": "cv.ng-ngrx.c3",
+          "type": "mc",
+          "prompt": "An effect loads data fine until the first 500 error; after that, dispatching the load action does nothing. Most likely cause?",
+          "options": [
+            "catchError sits on the outer actions$ pipe, so the effect stream completed",
+            "The reducer did not handle the failure action",
+            "The selector is memoized and hides new data",
+            "switchMap cancelled all future requests"
+          ],
+          "answer": 0,
+          "why": "An error that reaches the outer stream ends it; catchError replaces it with a single action and completes. Placing catchError inside the inner HTTP pipe keeps the outer stream alive."
+        },
+        {
+          "id": "cv.ng-ngrx.c4",
+          "type": "cloze",
+          "prompt": "A selector built with createSelector recomputes only when one of its input selectors returns a new ___.",
+          "answer": "reference",
+          "why": "Memoization compares inputs by reference, not deep equality. If a reducer mutates an array in place, the reference stays the same and the selector keeps returning stale results."
+        },
+        {
+          "id": "cv.ng-ngrx.c5",
+          "type": "mc",
+          "prompt": "A new HR leave-request screen is used by one team, shares no data with other modules, and holds a filter, a list and a selected row. What state approach fits best?",
+          "options": [
+            "A feature-level SignalStore or a service with signals",
+            "New global NgRx actions, reducer, effects and selectors",
+            "localStorage, read by the component on every change",
+            "A BehaviorSubject per field on the root AppComponent"
+          ],
+          "answer": 0,
+          "why": "Local, unshared state does not need the global ceremony. Full NgRx is not wrong, but it adds files and indirection with no sharing or traceability payoff here."
+        },
+        {
+          "id": "cv.ng-ngrx.c6",
+          "type": "cloze",
+          "prompt": "NgRx's lightweight, signal-based state container, imported from @ngrx/signals, is called ___.",
+          "answer": "SignalStore",
+          "why": "SignalStore composes state, computed values and methods with withState, withComputed and withMethods, and uses rxMethod when you still need RxJS for async flows."
+        }
+      ],
+      "explain": [
+        {
+          "id": "cv.ng-ngrx.e1",
+          "prompt": "You list NgRx. Walk me through what happens from a button click to an updated screen in an NgRx app, and tell me when you would not use NgRx.",
+          "seconds": 150,
+          "modelAnswer": "The click handler dispatches an action, say Tenders Load. The store passes the action to every reducer; the tenders reducer sets loading to true and returns a new state object, never mutating the old one. An effect also sees the action through ofType, calls the API with switchMap, and maps the response to Load Success or, with catchError inside the inner pipe, to Load Failure. The reducer handles Load Success by storing the list and clearing loading. Selectors built with createSelector derive the view, for example only open tenders, and because they are memoized they recompute only when the underlying slice changes. The component reads them with selectSignal and, with OnPush or signals, only the affected view re-renders. I would not use NgRx for local screen state, form state, or a small app; there a service with signals or a SignalStore gives the same clarity with far less boilerplate. [Add the module at Moveo where NgRx earned its keep and why.]",
+          "rubric": [
+            "Dispatch action, reducer returns new immutable state",
+            "Effect handles HTTP and dispatches success or failure",
+            "catchError placement or operator choice mentioned",
+            "Selectors memoized by reference",
+            "Component reads via selector or signal",
+            "Clear criteria for when NgRx is overkill, with alternative"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "cv.ng-ngrx.s1",
+          "situation": "Your team maintains an ERP whose core modules use NgRx. A developer opens a pull request adding a full NgRx slice (12 actions, reducer, three effects, eight selectors) for a small settings page used by two admins, with no data shared elsewhere. The sprint ends in three days.",
+          "question": "What do you do in the code review?",
+          "options": [
+            {
+              "text": "Suggest a feature-scoped SignalStore or a signal-based service, explain the rule of thumb (global store only for shared, cross-route state) and write it down for the team.",
+              "verdict": "best",
+              "why": "It right-sizes the solution and turns the review into a reusable team guideline, which is the mentoring part of a senior review."
+            },
+            {
+              "text": "Approve it because consistency with the rest of the app matters more than file count.",
+              "verdict": "ok",
+              "why": "Consistency is a valid argument in a large codebase, but approving without discussion misses the chance to set a clear rule for when NgRx is warranted."
+            },
+            {
+              "text": "Reject it and ask the developer to keep the settings in localStorage instead.",
+              "verdict": "bad",
+              "why": "localStorage is not a state manager: it is synchronous, untyped, readable by any script and shared across tabs, and admin settings belong on the server anyway."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cv.ng-change-detection",
+      "title": "Change detection and speed",
+      "tease": "zone.js re-checked your whole tree on every mouse move. Angular 21 dropped it by default. Now what?",
+      "primer": {
+        "problem": "When data changes, the page must update, but the framework first has to find out what changed. Checking every component after every click, timer and HTTP reply is simple and slow: big dashboards with thousands of bindings start to stutter. Angular performance work is about checking less, shipping less code and compiling ahead of time.",
+        "picture": "Classic Angular used **zone.js** to patch every browser async API, so after any event it checked the whole component tree top down, like a full table scan. **OnPush** turns that into an index seek: a component is checked only when an input reference changes, an event fires inside it, an async pipe emits or a signal it reads changes. **Signals** tell Angular exactly which views depend on which values, which makes **zoneless** possible. Lazy routes and `@defer` ship less JavaScript up front.",
+        "sketch": "Default + zone.js        OnPush + signals\n   [App] checked            [App]\n   /    \\                   /    \\\n [A]    [B] checked       [A]    [B] skipped\n  |      |                 |      |\n [C]    [D] checked       [C]*   [D] skipped\n                           * only the view that read the changed signal",
+        "terms": [
+          {
+            "term": "zone.js",
+            "def": "A library that patches browser async APIs such as setTimeout and events so Angular knows when to run change detection."
+          },
+          {
+            "term": "Change detection",
+            "def": "Angular's pass that re-evaluates template bindings and updates the DOM where values differ from last time."
+          },
+          {
+            "term": "OnPush",
+            "def": "A component strategy that skips checking unless inputs change by reference, events fire inside, or read signals change."
+          },
+          {
+            "term": "Signal",
+            "def": "A reactive value container; reading it inside a template registers a dependency, so Angular updates only views that read it."
+          },
+          {
+            "term": "Zoneless",
+            "def": "Running Angular without zone.js, relying on signals, events and explicit notifications to schedule change detection."
+          },
+          {
+            "term": "@defer",
+            "def": "A template block whose components load lazily in their own chunk, triggered by viewport, idle, interaction or a condition."
+          },
+          {
+            "term": "AOT",
+            "def": "Ahead-of-time compilation: templates are compiled to JavaScript at build time instead of in the browser."
+          }
+        ]
+      },
+      "lesson": {
+        "body": "With the default strategy and zone.js, any async event anywhere triggers a check of the whole tree. **OnPush** limits that: Angular checks the component only when an `@Input` (or `input()` signal) gets a new reference, a template event fires inside it, an `async` pipe emits, a signal read in its template changes, or you call `markForCheck()`. The classic bug is in-place mutation: `this.rows.push(x)` keeps the same array reference, so an OnPush child never updates. Use immutable updates (`[...rows, x]`) or signals.\n\nThe version story matters in an interview. Zoneless was experimental in v18, became stable in v20.2, and is the default for new projects since **Angular 21** (November 2025): new apps no longer ship zone.js, while existing apps keep `provideZoneChangeDetection()`. **Angular 22** (mid-2026, the current major) goes further and makes OnPush the default for new components. Zoneless shrinks the bundle and removes surprise checks, but third-party widgets that relied on zone.js may need `markForCheck` or upgrades.\n\nLists: the built-in `@for` requires a `track` expression (the old `*ngFor` had optional `trackBy`). Track by a stable id so Angular moves DOM nodes instead of recreating them; for thousands of rows add CDK virtual scrolling.\n\nLoading: `loadComponent` and `loadChildren` split routes into chunks, and `@defer (on viewport)` splits parts of a page. **AOT** has been the default since Ivy: templates compile at build time, template errors fail the build, and the compiler is not shipped. JIT survives only for special cases.\n\nReact mapping: OnPush is close to `React.memo`, `track` is React's `key`, and `React.lazy` with `Suspense` plays the role of `loadComponent` and `@defer`.",
+        "snippet": "export const routes: Routes = [\n  { path: 'payroll',\n    loadChildren: () => import('./payroll/routes').then(m => m.PAYROLL_ROUTES) },\n  { path: 'reports',\n    loadComponent: () => import('./reports/reports.component').then(m => m.ReportsComponent) },\n];\n\n@Component({\n  selector: 'app-dashboard',\n  changeDetection: ChangeDetectionStrategy.OnPush,\n  imports: [RowComponent, HeavyChartComponent],\n  template: `\n    @for (row of rows(); track row.id) { <app-row [row]=\"row\" /> }\n    @defer (on viewport) {\n      <app-heavy-chart [data]=\"rows()\" />\n    } @placeholder {\n      <div class=\"chart-skeleton\"></div>\n    }\n  `,\n})\nexport class DashboardComponent {\n  rows = input.required<Row[]>();\n}",
+        "snippetLang": "typescript",
+        "source": {
+          "title": "Angular without ZoneJS (Zoneless) (angular.dev)",
+          "url": "https://angular.dev/guide/zoneless"
+        }
+      },
+      "cards": [
+        {
+          "id": "cv.ng-change-detection.c1",
+          "type": "mc",
+          "prompt": "A parent calls this.rows.push(newRow). The OnPush child that receives [rows] does not show the new row. Why?",
+          "options": [
+            "The array reference did not change, so OnPush saw no input change",
+            "OnPush components never update from inputs",
+            "push() runs outside the Angular zone",
+            "The child needs a trackBy function"
+          ],
+          "answer": 0,
+          "why": "OnPush compares inputs by reference. Fix with an immutable update or a signal; trackBy only affects how list items are reused, not whether the check runs."
+        },
+        {
+          "id": "cv.ng-change-detection.c2",
+          "type": "tf",
+          "prompt": "Since Angular 21, projects created with ng new are zoneless by default and no longer include zone.js.",
+          "answer": true,
+          "why": "Zoneless became stable in v20.2 and the default for new apps in v21. Existing apps that rely on zone.js keep it via provideZoneChangeDetection(), which the update migration adds."
+        },
+        {
+          "id": "cv.ng-change-detection.c3",
+          "type": "mc",
+          "prompt": "Which event does NOT by itself cause an OnPush component to be checked?",
+          "options": [
+            "A service changes a plain class field the template reads, inside a setTimeout",
+            "A new object reference arrives on one of its inputs",
+            "A click handler in its own template runs",
+            "An Observable bound with the async pipe emits"
+          ],
+          "answer": 0,
+          "why": "A plain field change elsewhere gives OnPush no signal to re-check. Making that field a signal, or calling markForCheck(), would; the other three are the documented triggers."
+        },
+        {
+          "id": "cv.ng-change-detection.c4",
+          "type": "cloze",
+          "prompt": "In the built-in @for block, the ___ expression is mandatory and tells Angular how to identify each item between renders.",
+          "answer": "track",
+          "why": "track by a stable id lets Angular move existing DOM nodes instead of destroying and recreating them, the same job React's key prop does."
+        },
+        {
+          "id": "cv.ng-change-detection.c5",
+          "type": "mc",
+          "prompt": "What is a genuine benefit of AOT compilation over JIT?",
+          "options": [
+            "Template errors fail the build and the browser does not download the compiler",
+            "It is required for lazy-loaded routes to work",
+            "It lets you skip change detection entirely",
+            "It makes components OnPush automatically"
+          ],
+          "answer": 0,
+          "why": "AOT compiles templates to JavaScript at build time, catching binding errors early and shrinking bundles. Lazy loading is a router and bundler feature that works independently of AOT."
+        },
+        {
+          "id": "cv.ng-change-detection.c6",
+          "type": "cloze",
+          "prompt": "A template block wrapped in ___ (on viewport) is split into its own chunk and loaded only when it scrolls into view.",
+          "answer": "@defer",
+          "why": "@defer, stable since v17, takes triggers such as on viewport, on idle, on interaction or when a condition, with @placeholder and @loading blocks for the wait."
+        }
+      ],
+      "explain": [
+        {
+          "id": "cv.ng-change-detection.e1",
+          "prompt": "Your CV says you tuned Angular performance with OnPush, lazy loading and AOT. Explain how OnPush decides when to re-render, and what signals and zoneless change about that picture today.",
+          "seconds": 150,
+          "modelAnswer": "With the default strategy, zone.js notices any async event and Angular checks every component top down. OnPush narrows that: a component is checked only when an input gets a new reference, an event fires in its own template, an async pipe emits, a signal it reads changes, or someone calls markForCheck. That makes immutable updates essential, because mutating an array in place never reaches an OnPush child. Signals go a step further: Angular knows exactly which views read which signal, so it can refresh just those views. That is what made zoneless possible; it went stable in 20.2, became the default for new projects in Angular 21, and Angular 22 makes OnPush the default for new components. Around that I used lazy loading with loadChildren and loadComponent so heavy modules ship only when visited, and AOT so template errors fail the build and no compiler is shipped. In React the closest analogues are React.memo, keys and React.lazy. [Name the screen where OnPush made a visible difference and how you measured it.]",
+          "rubric": [
+            "Default vs OnPush triggers listed correctly",
+            "Immutable updates or reference equality explained",
+            "Signals give fine-grained dependency tracking",
+            "Zoneless status: stable v20.2, default for new apps in v21",
+            "Lazy loading and AOT described accurately",
+            "Mentions measuring, not guessing"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "cv.ng-change-detection.s1",
+          "situation": "A tender overview grid in an Angular 17 app shows about 2,000 rows with nested components and uses default change detection. Typing in the filter box lags visibly, and the client demo is next week.",
+          "question": "What do you do first?",
+          "options": [
+            {
+              "text": "Profile with Angular DevTools and the browser performance panel, then apply OnPush with immutable or signal state, track by id, debounce the filter and add CDK virtual scrolling.",
+              "verdict": "best",
+              "why": "It measures where time goes, then applies the standard fixes in order of payoff: fewer checks, less DOM churn, fewer rows rendered."
+            },
+            {
+              "text": "Migrate the whole application to zoneless before the demo.",
+              "verdict": "ok",
+              "why": "Zoneless is the long-term direction, but a big-bang migration a week before a demo risks breaking third-party widgets and still does not fix rendering 2,000 rows."
+            },
+            {
+              "text": "Detach the change detector on the grid and call detectChanges() from a setInterval every 500 ms.",
+              "verdict": "bad",
+              "why": "It trades lag for stale, polling-driven UI and wasted CPU, and hides the actual cause from the next developer."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cv.ng-guards",
+      "title": "Router guards",
+      "tease": "You list CanLoad. Deprecated since Angular 15.1. And your guard never protected the data anyway.",
+      "primer": {
+        "problem": "Some screens should open only for logged-in users or for certain roles, and some should warn before the user leaves with unsaved changes. Router guards decide whether a navigation goes ahead. But they run in the browser, which the user controls, so a guard can hide a door from honest users; it cannot lock it against attackers.",
+        "picture": "A guard is like an `[Authorize]` filter or ASP.NET Core middleware, but for client-side navigation. Before switching routes the router calls guard functions and waits for `true`, `false` or a `UrlTree` redirect. `canMatch` decides whether a route config applies at all, before its lazy chunk downloads; `canActivate` decides whether to enter; `canDeactivate` whether to leave. The real `[Authorize]` stays on the .NET API: guards are UX, the server is the lock.",
+        "sketch": "URL /payroll\n   |-- canMatch?      no -> try next route (or 404)\n   |-- load lazy chunk\n   |-- canActivate?   no -> UrlTree('/login')\n   |-- render PayrollComponent\n   '-- leaving: canDeactivate? -> 'Discard changes?'\nAPI: [Authorize(Policy=\"Payroll\")] checks every request anyway",
+        "terms": [
+          {
+            "term": "CanActivateFn",
+            "def": "The type of a functional guard that decides whether a route may be entered, returning boolean or UrlTree."
+          },
+          {
+            "term": "canMatch",
+            "def": "A route guard that decides whether a route definition matches at all; on false the router tries the next route."
+          },
+          {
+            "term": "CanLoad",
+            "def": "The old guard against downloading a lazy module, deprecated since Angular 15.1 in favour of canMatch."
+          },
+          {
+            "term": "canDeactivate",
+            "def": "A guard that runs when leaving a route, typically to confirm discarding unsaved form changes."
+          },
+          {
+            "term": "UrlTree",
+            "def": "Angular's parsed representation of a URL; returning one from a guard cancels navigation and redirects there."
+          },
+          {
+            "term": "inject()",
+            "def": "Angular's function for getting dependencies inside an injection context, which is how functional guards reach services."
+          }
+        ]
+      },
+      "lesson": {
+        "body": "Modern guards are plain functions: `CanActivateFn`, `CanMatchFn`, `CanDeactivateFn`, `CanActivateChildFn`. They get services through `inject()`, so a RoleGuard becomes a small factory like `roleGuard('payroll-admin')` instead of a class per role. Class-based guards still work, but the docs and new code use functions. A guard can return a boolean, a `UrlTree` to redirect (or a `RedirectCommand` since v18), or an Observable or Promise of those. Do not call `router.navigate()` and return false; return the `UrlTree` so the router handles the redirect atomically.\n\nThe CanLoad answer: yes, **CanLoad** was deprecated in Angular 15.1 in favour of **canMatch**. Both can stop a lazy chunk from downloading, but canMatch runs during route matching, so on `false` the router simply tries the next route with the same path. That allows two routes for `dashboard`, one for admins and one for everyone, and it also covers non-lazy routes. If your 2024 code used CanLoad, say so and say you would migrate it.\n\n**canDeactivate** protects unsaved forms: the guard asks the component whether it is dirty and confirms. It does not run when the user closes the tab or reloads; add a `beforeunload` listener for that.\n\nThe senior point: guards are UX. Lazy chunks are downloadable JavaScript, local state can be edited in DevTools, and anyone can call the API with curl. Authorization must be enforced on the .NET API with the validated JWT's claims and policies, per request and per resource. Guards keep honest users out of dead ends. React mapping: React Router has no guards; you wrap routes in a `<RequireAuth>` element or check in a loader and redirect, and the same server-side rule applies.",
+        "snippet": "export const authGuard: CanActivateFn = (_route, state) => {\n  const auth = inject(AuthService);\n  return auth.isLoggedIn()\n    || inject(Router).createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });\n};\n\nexport const roleGuard = (role: string): CanMatchFn => () =>\n  inject(AuthService).hasRole(role) || inject(Router).createUrlTree(['/forbidden']);\n\nexport const unsavedChangesGuard: CanDeactivateFn<{ isDirty(): boolean }> =\n  (cmp) => !cmp.isDirty() || confirm('Discard unsaved changes?');\n\nexport const routes: Routes = [\n  { path: 'payroll',\n    canMatch: [roleGuard('payroll-admin')],\n    canActivate: [authGuard],\n    loadChildren: () => import('./payroll/routes').then(m => m.PAYROLL_ROUTES) },\n  { path: 'employees/:id/edit',\n    component: EmployeeEditComponent,\n    canDeactivate: [unsavedChangesGuard] },\n];",
+        "snippetLang": "typescript",
+        "source": {
+          "title": "Control route access with guards (angular.dev)",
+          "url": "https://angular.dev/guide/routing/route-guards"
+        }
+      },
+      "cards": [
+        {
+          "id": "cv.ng-guards.c1",
+          "type": "mc",
+          "prompt": "The interviewer says: 'You list CanLoad. Isn't that deprecated?' What is the accurate answer?",
+          "options": [
+            "Yes, since Angular 15.1; canMatch replaces it, also blocks the lazy download, and lets the router fall through to another route",
+            "No, CanLoad is still the recommended way to protect lazy modules",
+            "Yes, it was replaced by canActivate, which now prevents chunk downloads",
+            "Yes, it was removed in Angular 16 and apps fail to compile"
+          ],
+          "answer": 0,
+          "why": "CanLoad has been deprecated since 15.1 in favour of canMatch. canActivate runs after the chunk has loaded, so it is not the replacement, and the API remains in the docs marked deprecated rather than removed."
+        },
+        {
+          "id": "cv.ng-guards.c2",
+          "type": "tf",
+          "prompt": "If a RoleGuard blocks the /payroll route for users without the payroll role, those users cannot obtain payroll data.",
+          "answer": false,
+          "why": "The guard only controls client-side navigation. Anyone can call the payroll API directly with the token they have, so the API must enforce the role on every request."
+        },
+        {
+          "id": "cv.ng-guards.c3",
+          "type": "mc",
+          "prompt": "How should a functional guard redirect an unauthenticated user to /login?",
+          "options": [
+            "Return router.createUrlTree(['/login'])",
+            "Call router.navigate(['/login']) and return true",
+            "Set window.location.href and return false",
+            "Throw an error caught by the router"
+          ],
+          "answer": 0,
+          "why": "Returning a UrlTree cancels the current navigation and starts the redirect as one router operation. navigate() plus a return value races two navigations and is the pattern the docs steer away from."
+        },
+        {
+          "id": "cv.ng-guards.c4",
+          "type": "cloze",
+          "prompt": "The functional guard type that runs when the user tries to leave a route, for example with unsaved changes, is ___.",
+          "answer": "CanDeactivateFn",
+          "why": "CanDeactivateFn<T> receives the component instance, so it can ask the component whether its form is dirty."
+        },
+        {
+          "id": "cv.ng-guards.c5",
+          "type": "mc",
+          "prompt": "Your unsaved-changes canDeactivate guard works for in-app links but users still lose work. What case does it not cover?",
+          "options": [
+            "Closing the tab or reloading the page",
+            "Clicking a routerLink to another route",
+            "Calling router.navigate from code",
+            "Pressing the browser back button within the app"
+          ],
+          "answer": 0,
+          "why": "Tab close and reload never reach the Angular router, so add a beforeunload listener while the form is dirty. Back-button navigation within the app does go through the router and its guards."
+        },
+        {
+          "id": "cv.ng-guards.c6",
+          "type": "tf",
+          "prompt": "When a canMatch guard returns false, the router continues trying the remaining routes in the configuration.",
+          "answer": true,
+          "why": "That is the key difference from canActivate, which cancels navigation. It lets you define two routes with the same path for different roles."
+        }
+      ],
+      "explain": [
+        {
+          "id": "cv.ng-guards.e1",
+          "prompt": "Your CV lists AuthGuard, RoleGuard, CanActivate, CanLoad and CanDeactivate. How would you implement role-based access in an Angular and .NET app today, and what has changed since you wrote those guards?",
+          "seconds": 150,
+          "modelAnswer": "On the client I would write functional guards. An authGuard checks the session and returns a UrlTree to the login page with a returnUrl. A roleGuard factory takes a role name and is attached as canMatch on lazy routes, so users without the role do not even download that chunk, and the router can fall through to another route. A canDeactivate guard asks the form whether it is dirty, plus a beforeunload listener for tab closes. What changed: CanLoad has been deprecated since 15.1 in favour of canMatch, and functional guards with inject replaced one class per guard. The most important part is unchanged: guards are UX only. The .NET API validates the JWT on every call and enforces authorization with policies on claims, including resource-level checks such as whether this user may see this employee's payroll. If the API does not enforce it, a guard is just a hidden door. [Mention how roles reached the token at Moveo, e.g. claims from your identity provider.]",
+          "rubric": [
+            "Functional guards with inject and UrlTree redirect",
+            "RoleGuard as a parameterised factory",
+            "CanLoad deprecated since 15.1, canMatch replaces it",
+            "canDeactivate plus beforeunload for unsaved forms",
+            "Guards are UX; API enforces authorization per request",
+            "Resource-level authorization mentioned"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "cv.ng-guards.s1",
+          "situation": "A penetration test of the ERP finds that an HR clerk without the payroll role can fetch salary data by calling the payroll REST endpoints directly with her own JWT. The Angular app has a RoleGuard on the payroll routes, so the menu and pages are hidden from her.",
+          "question": "What do you do?",
+          "options": [
+            {
+              "text": "Enforce authorization on the API: policy-based checks on role claims for every payroll endpoint, resource-level checks, and integration tests that call the endpoints as an unauthorised user; keep the guard for UX.",
+              "verdict": "best",
+              "why": "The flaw is on the server, so the fix is there, and tests prevent the same gap on the next endpoint."
+            },
+            {
+              "text": "Switch the payroll route from canActivate to canMatch so the payroll chunk is never downloaded by her browser.",
+              "verdict": "ok",
+              "why": "Good hygiene that hides more of the client, but the API still returns salaries to anyone with a valid token."
+            },
+            {
+              "text": "Obfuscate the front-end bundle and remove the payroll endpoints from the Swagger page.",
+              "verdict": "bad",
+              "why": "Security through obscurity: the endpoints remain open and are visible in the network tab within minutes."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cv.ng-forms",
+      "title": "Reactive and dynamic forms",
+      "tease": "Forty fields built from JSON config and a custom date picker. How does Angular know it's dirty?",
+      "primer": {
+        "problem": "Business apps live on forms: employee records, payroll inputs, tender bids. They need validation, checks against the server such as 'is this email taken', fields that appear from configuration, and custom widgets that still behave like normal inputs. Done by hand with event handlers, this turns into untestable spaghetti quickly.",
+        "picture": "A reactive form is a typed object model of the form held in the component class, like a C# view model with validation attributes, while the template only binds to it. `FormControl` is one field, `FormGroup` an object, `FormArray` a list of rows. Validators are pure functions; async validators return Observables. A **ControlValueAccessor** is an adapter, like a wrapper around a Kendo widget, that lets any custom component plug into `formControlName` as if it were a native input.",
+        "terms": [
+          {
+            "term": "FormGroup / FormArray",
+            "def": "Containers of controls: a FormGroup is keyed like an object, a FormArray is an ordered list like table rows."
+          },
+          {
+            "term": "Typed forms",
+            "def": "Since Angular 14, form controls carry TypeScript types of their values, so form.value is no longer typed any."
+          },
+          {
+            "term": "ValidatorFn",
+            "def": "A function that receives a control and returns null when valid or an errors object when invalid."
+          },
+          {
+            "term": "Async validator",
+            "def": "A validator that returns an Observable or Promise, used for server checks such as whether a username already exists."
+          },
+          {
+            "term": "ControlValueAccessor",
+            "def": "An interface that connects a custom component to the forms API so it works with formControlName and ngModel."
+          },
+          {
+            "term": "Signal Forms",
+            "def": "Angular's newer signal-based forms API, experimental in v21 and declared stable in v22; reactive forms remain supported."
+          }
+        ]
+      },
+      "lesson": {
+        "body": "**Template-driven** forms use `ngModel` and let Angular build the model from the template: quick for a login box, but the model is implicit and harder to test. **Reactive** forms build the model in code, so you can unit test it, compose it and generate it. Since v14 they are typed; `NonNullableFormBuilder` makes `reset()` return the initial value instead of `null`.\n\nA **dynamic form** is a config, for example JSON from the server, turned into a `FormGroup` by looping over field definitions, then rendered with `@for` and `@switch` on the field type, each case a known component. Repeating rows such as tender line items are a `FormArray` you `push` and `removeAt`. Keep the set of field components fixed and the config declarative; never render HTML from config.\n\n**Validators** are functions returning `null` or an errors object. Cross-field rules (end date after start date) go on the parent `FormGroup`. **Async validators** run only after all sync validators pass; set `updateOn: 'blur'` or debounce inside with `timer` plus `switchMap` so you do not hit the API on every keystroke. Whatever the client checks, the API validates again.\n\nA custom component becomes a form control by implementing **ControlValueAccessor**: `writeValue` (model to view), `registerOnChange` and `registerOnTouched` (store the callbacks and call them on user input and blur), optionally `setDisabledState`, and registering itself with the `NG_VALUE_ACCESSOR` provider. Forget to call the change callback and the form never sees the value or becomes dirty.\n\nCurrent state: **Signal Forms** were experimental in v21 and are stable in v22; reactive forms remain fully supported. React mapping: React Hook Form with a zod schema covers the same ground, and a controlled component is React's version of a ControlValueAccessor.",
+        "snippet": "type FieldConfig = { key: string; type: 'text' | 'number' | 'date'; required?: boolean };\n\nexport function buildForm(fb: NonNullableFormBuilder, fields: FieldConfig[]) {\n  const controls: Record<string, FormControl<string>> = {};\n  for (const f of fields) {\n    controls[f.key] = fb.control('', f.required ? [Validators.required] : []);\n  }\n  return fb.group(controls);\n}\n\nexport const noWeekend: ValidatorFn = (c: AbstractControl) => {\n  const day = new Date(c.value).getDay();\n  return day === 0 || day === 6 ? { weekend: true } : null;\n};\n\nexport function uniqueEmail(api: EmployeeApi): AsyncValidatorFn {\n  return (c) => timer(300).pipe(\n    switchMap(() => api.emailExists(c.value)),\n    map(exists => (exists ? { emailTaken: true } : null)),\n  );\n}",
+        "snippetLang": "typescript",
+        "source": {
+          "title": "Reactive forms (angular.dev)",
+          "url": "https://angular.dev/guide/forms/reactive-forms"
+        }
+      },
+      "cards": [
+        {
+          "id": "cv.ng-forms.c1",
+          "type": "mc",
+          "prompt": "A custom date-picker component is used with formControlName. The user picks a date but the form value never changes and the form never becomes dirty. What is missing?",
+          "options": [
+            "Calling the function registered via registerOnChange when the user picks a date",
+            "Adding the date picker to the form's validators array",
+            "Marking the component OnPush",
+            "Using ngModel inside the date picker"
+          ],
+          "answer": 0,
+          "why": "A ControlValueAccessor must store the callback from registerOnChange and call it with each new value; writeValue only covers model-to-view. Without that call the forms API never hears about user input."
+        },
+        {
+          "id": "cv.ng-forms.c2",
+          "type": "cloze",
+          "prompt": "A synchronous validator function returns ___ when the value is valid.",
+          "answer": "null",
+          "why": "Any non-null object is treated as an errors map, such as { required: true }, so returning an empty object or false by mistake can mark a valid field invalid."
+        },
+        {
+          "id": "cv.ng-forms.c3",
+          "type": "tf",
+          "prompt": "Async validators run on every keystroke in parallel with sync validators, even when a sync validator has already failed.",
+          "answer": false,
+          "why": "Angular runs async validators only after all sync validators pass, and the control status is PENDING while they run. You still debounce or use updateOn: 'blur' to limit server calls."
+        },
+        {
+          "id": "cv.ng-forms.c4",
+          "type": "mc",
+          "prompt": "A tender bid form lets users add and remove any number of line items, each with description, quantity and price. Which structure models this?",
+          "options": [
+            "A FormArray of FormGroups",
+            "A FormGroup with fields named item1, item2, item3",
+            "One FormControl holding a JSON string",
+            "A template-driven form with ngModel per row"
+          ],
+          "answer": 0,
+          "why": "FormArray holds an ordered, growable list of controls and supports push and removeAt, with validation per row. Numbered keys in a FormGroup work until the count changes, then become painful."
+        },
+        {
+          "id": "cv.ng-forms.c5",
+          "type": "mc",
+          "prompt": "A control is created with new FormControl('draft') and no options. After control.reset(), what is its value?",
+          "options": [
+            "null",
+            "'draft'",
+            "'' (empty string)",
+            "undefined"
+          ],
+          "answer": 0,
+          "why": "Without nonNullable: true, reset() sets the value to null, which is why its type is FormControl<string | null>. With nonNullable or NonNullableFormBuilder it resets to 'draft'."
+        },
+        {
+          "id": "cv.ng-forms.c6",
+          "type": "cloze",
+          "prompt": "To validate that an end date comes after a start date, attach the validator to the parent ___ rather than either control.",
+          "answer": "FormGroup",
+          "why": "A cross-field validator needs both values, so it lives on the group and reads both children; the error then sits on the group, and you show it near the end date."
+        }
+      ],
+      "explain": [
+        {
+          "id": "cv.ng-forms.e1",
+          "prompt": "Your CV says you built dynamic forms in Angular. Explain how you would render a form from a JSON config, validate it, and plug in a custom input component.",
+          "seconds": 150,
+          "modelAnswer": "I keep a fixed library of field components, such as text, number, date and select, and a declarative config, usually served by the API, that lists keys, types, labels and validation rules. A builder loops over the config and creates a typed FormGroup with NonNullableFormBuilder, mapping rules to validators: required, pattern, custom ValidatorFns, and async validators for server checks, debounced or set to update on blur. Repeating sections become a FormArray of FormGroups. The template loops with @for and switches on the field type to pick the component. Custom widgets implement ControlValueAccessor: writeValue for model to view, the registered onChange and onTouched callbacks for view to model, setDisabledState, and the NG_VALUE_ACCESSOR provider, so they behave exactly like native inputs for dirty, touched and validation. The server validates the same rules again, because client validation is UX. Today I would also look at Signal Forms, stable in Angular 22. [Describe the ERP module where you used this, e.g. HR or tenders, and what the config contained.]",
+          "rubric": [
+            "Config-driven FormGroup built in code, fixed component library",
+            "Validators mapped from config, including async with debounce",
+            "FormArray for repeating sections",
+            "ControlValueAccessor methods and provider explained",
+            "Server re-validates; client validation is UX",
+            "Anchored in a concrete project example"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "cv.ng-forms.s1",
+          "situation": "HR administrators of an ERP want to add new fields to the employee onboarding form, such as a second emergency contact or a work permit number, without waiting for a developer and a deployment. Around fifty people use the system daily.",
+          "question": "How do you design it?",
+          "options": [
+            {
+              "text": "Store a versioned field config on the server, render it with a fixed set of field components in a dynamic reactive form, and validate the same rules on the API.",
+              "verdict": "best",
+              "why": "Admins get flexibility within safe, tested building blocks, and server-side validation keeps data clean whatever the client sends."
+            },
+            {
+              "text": "Hard-code every possible field with @if toggles controlled by feature flags.",
+              "verdict": "ok",
+              "why": "Safe and simple for a few fields, but every genuinely new field still needs a release, so it misses the requirement."
+            },
+            {
+              "text": "Let admins paste HTML snippets that the app renders with innerHTML and bypassSecurityTrustHtml.",
+              "verdict": "bad",
+              "why": "It opens a stored XSS hole for every user of the form and the inputs would not even be connected to the form model."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cv.ng-directives-pipes",
+      "title": "Directives, pipes, standalone",
+      "tease": "Your custom filter pipe runs thousands of times a second. Which single flag caused it?",
+      "primer": {
+        "problem": "Repeated UI behaviour, such as hiding buttons by permission, auto-focusing a field or formatting money and dates, gets copy-pasted across hundreds of templates. Directives and pipes package that behaviour once so every screen reuses it. Done carelessly, they quietly run on every change detection pass and slow the whole app down.",
+        "picture": "A component is a directive with a template. An **attribute directive** decorates an existing element, like a C# extension method on the DOM. A **structural directive** owns a template and decides whether or how often to stamp it out, like `*ngIf` before `@if` existed. A **pipe** is a template formatting function, like a WPF value converter: **pure** pipes re-run only when the input reference changes, **impure** pipes on every check. Since v19 all of these are **standalone** by default.",
+        "terms": [
+          {
+            "term": "Attribute directive",
+            "def": "A directive that changes the look or behaviour of the element it sits on without adding or removing elements."
+          },
+          {
+            "term": "Structural directive",
+            "def": "A directive that adds or removes DOM by rendering a template, written with a leading asterisk such as *appHasRole."
+          },
+          {
+            "term": "Host binding",
+            "def": "Binding properties, classes or event listeners on the element a directive is attached to, declared in its host metadata."
+          },
+          {
+            "term": "Pure pipe",
+            "def": "The default pipe kind; Angular re-runs it only when its input value or reference changes."
+          },
+          {
+            "term": "Impure pipe",
+            "def": "A pipe marked pure: false that Angular re-runs on every change detection pass, regardless of input."
+          },
+          {
+            "term": "Standalone component",
+            "def": "A component that declares its own imports and needs no NgModule; the default since Angular 19."
+          },
+          {
+            "term": "ViewContainerRef",
+            "def": "A handle to a spot in the DOM where a directive can create or clear embedded views from a template."
+          }
+        ]
+      },
+      "lesson": {
+        "body": "An **attribute directive** works on its host element. Modern Angular declares host behaviour in the `host` metadata (`'[class.active]': 'isActive()'`, `'(click)': 'toggle()'`); the docs prefer it to the older `@HostBinding` and `@HostListener` decorators, which remain for compatibility. Use `Renderer2` or bindings, not raw `nativeElement` poking, so the code also works with server-side rendering.\n\nA **structural directive** injects `TemplateRef` and `ViewContainerRef` and calls `createEmbeddedView` or `clear`. The asterisk is sugar: `<button *appHasRole=\"'admin'\">` becomes an `<ng-template>` wrapping the button with the directive on it. A permission directive like this is classic CV material; remember it only hides UI, the API still enforces. The built-in `*ngIf`, `*ngFor` and `*ngSwitch` were deprecated in v20 in favour of `@if`, `@for` and `@switch`, with a schematic (`ng generate @angular/core:control-flow`) to migrate. Custom structural directives are not deprecated.\n\n**Pipes** are pure by default: Angular caches by input reference, so a pure pipe on an array does not re-run when you `push` into it. Marking a pipe `pure: false` makes it run on every change detection pass; an impure filter or sort over thousands of rows is a classic cause of a janky screen. The `async` pipe is impure for a good reason: it has to check for new emissions. For derived values, a `computed()` signal or a memoized selector is usually better than an impure pipe.\n\nSince v19, components, directives and pipes are **standalone** by default: each lists its own `imports`, and the app starts with `bootstrapApplication`. NgModules still work for legacy code. React mapping: React has no directives; custom hooks and wrapper components fill that role, and pipes become plain functions or `useMemo`.",
+        "snippet": "@Directive({ selector: '[appHasRole]' })\nexport class HasRoleDirective {\n  private tpl = inject(TemplateRef<unknown>);\n  private vcr = inject(ViewContainerRef);\n  private auth = inject(AuthService);\n  appHasRole = input.required<string>();\n\n  constructor() {\n    effect(() => {\n      this.vcr.clear();\n      if (this.auth.hasRole(this.appHasRole())) this.vcr.createEmbeddedView(this.tpl);\n    });\n  }\n}\n\n@Pipe({ name: 'eur' }) // pure by default\nexport class EurPipe implements PipeTransform {\n  private fmt = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });\n  transform(v: number | null): string {\n    return v == null ? '' : this.fmt.format(v);\n  }\n}\n\n// <button *appHasRole=\"'payroll-admin'\">Run payroll</button>  {{ total | eur }}",
+        "snippetLang": "typescript",
+        "source": {
+          "title": "Structural directives (angular.dev)",
+          "url": "https://angular.dev/guide/directives/structural-directives"
+        }
+      },
+      "cards": [
+        {
+          "id": "cv.ng-directives-pipes.c1",
+          "type": "mc",
+          "prompt": "What does <button *appHasRole=\"'admin'\">Delete</button> desugar to?",
+          "options": [
+            "An <ng-template [appHasRole]=\"'admin'\"> wrapping the button",
+            "A button with an appHasRole attribute and a hidden CSS class",
+            "A call to appHasRole() inside the button's click handler",
+            "A child component named app-has-role"
+          ],
+          "answer": 0,
+          "why": "The asterisk turns the element into a template the directive can stamp out or not via ViewContainerRef. That is why a structural directive removes the button from the DOM rather than hiding it with CSS."
+        },
+        {
+          "id": "cv.ng-directives-pipes.c2",
+          "type": "tf",
+          "prompt": "A pure pipe re-runs when you push a new item into the array it receives.",
+          "answer": false,
+          "why": "Pure pipes are re-evaluated only when the input reference or primitive value changes. push keeps the same reference, so the output stays stale until you pass a new array."
+        },
+        {
+          "id": "cv.ng-directives-pipes.c3",
+          "type": "mc",
+          "prompt": "Why is Angular's built-in async pipe impure?",
+          "options": [
+            "It must check on every change detection pass whether its Observable has emitted a new value",
+            "Impure pipes are faster than pure pipes",
+            "It mutates the Observable passed to it",
+            "Pipes that return Observables are always impure"
+          ],
+          "answer": 0,
+          "why": "The input reference (the Observable) stays the same while its latest value changes, so a pure pipe would never notice. Impure here is deliberate, not a performance mistake."
+        },
+        {
+          "id": "cv.ng-directives-pipes.c4",
+          "type": "cloze",
+          "prompt": "Since Angular v19, components, directives and pipes are ___ by default, so they list their own imports instead of being declared in an NgModule.",
+          "answer": "standalone",
+          "why": "You no longer write standalone: true; you would have to opt out with standalone: false for legacy NgModule declarations."
+        },
+        {
+          "id": "cv.ng-directives-pipes.c5",
+          "type": "mc",
+          "prompt": "Which way of binding a CSS class and a click listener on a directive's host element do the current Angular docs recommend?",
+          "options": [
+            "The host property in the @Directive metadata",
+            "@HostBinding and @HostListener decorators",
+            "ElementRef.nativeElement.classList and addEventListener in ngOnInit",
+            "A wrapping component with a template"
+          ],
+          "answer": 0,
+          "why": "The docs prefer host metadata and keep the decorators for backward compatibility. Direct nativeElement manipulation bypasses Angular and breaks under server-side rendering."
+        },
+        {
+          "id": "cv.ng-directives-pipes.c6",
+          "type": "cloze",
+          "prompt": "To show a filtered or totalled list without an impure pipe, modern Angular derives it with a ___ signal.",
+          "answer": "computed",
+          "why": "computed() memoizes and re-evaluates only when the signals it reads change, which is exactly what an impure pipe fails to do."
+        }
+      ],
+      "explain": [
+        {
+          "id": "cv.ng-directives-pipes.e1",
+          "prompt": "Your CV says you built custom directives and pipes. Describe one of each you wrote, and explain attribute versus structural directives and pure versus impure pipes.",
+          "seconds": 120,
+          "modelAnswer": "An attribute directive changes an existing element: behaviour or styling through host bindings, for example a directive that auto-focuses a field or highlights an invalid row. A structural directive controls whether a template is rendered at all: it injects TemplateRef and ViewContainerRef and creates or clears the embedded view, like a permission directive that removes buttons the user's role may not use. The asterisk syntax is sugar for an ng-template. For pipes, pure is the default and is cached by input reference, which makes them cheap but means mutating an array will not refresh them. Impure pipes run on every change detection pass; the async pipe needs that, but an impure filter over a large list is a performance trap, so I would use a computed signal or a memoized selector instead. Since v19 all of these are standalone by default. A permission directive is UX only; the API still enforces. [Name your actual directive and pipe, e.g. from the Moveo ERP, and what problem each solved.]",
+          "rubric": [
+            "Attribute vs structural explained correctly",
+            "TemplateRef and ViewContainerRef or ng-template desugaring",
+            "Pure pipes cached by reference, mutation pitfall",
+            "Impure pipes run every cycle; async pipe as the valid case",
+            "Computed signal or selector as alternative",
+            "Concrete example from own work"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "cv.ng-directives-pipes.s1",
+          "situation": "An employee list with 5,000 rows becomes sluggish after a colleague adds a filterBy pipe marked pure: false, used inside @for to filter by the search text and the department dropdown. Product wants the instant filtering kept.",
+          "question": "What do you change?",
+          "options": [
+            {
+              "text": "Remove the impure pipe and derive the filtered rows in a computed signal (or a memoized selector) from the rows, search and department signals, then render that list with track by id.",
+              "verdict": "best",
+              "why": "Filtering runs only when one of its inputs changes, not on every change detection pass, and the template stays simple."
+            },
+            {
+              "text": "Make the pipe pure and make sure every update creates a new array reference.",
+              "verdict": "ok",
+              "why": "This removes the per-cycle cost, but all arguments must be passed as pipe parameters and every caller must remember immutable updates."
+            },
+            {
+              "text": "Run the filtering inside NgZone.runOutsideAngular so it does not trigger change detection.",
+              "verdict": "bad",
+              "why": "The pipe is called by change detection itself, so this changes nothing about how often it runs, and in a zoneless app NgZone does nothing at all."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cv.ng-storage-ui",
+      "title": "Storage, caching, UI kits",
+      "tease": "Your JWT sits in localStorage. One XSS hole and every token walks out the door. Defend it.",
+      "primer": {
+        "problem": "Browser apps need to remember things: who is logged in, user preferences, data that is slow to fetch. Where you put it decides who can read it: only the server, your own scripts, or any script an attacker manages to inject. Separately, the interface has to look consistent on phones and desktops without months of hand-written CSS.",
+        "picture": "Think of three drawers. **localStorage** is a drawer any JavaScript on your origin can open, and it never empties itself. **sessionStorage** is the same drawer per tab, emptied when the tab closes. An **HttpOnly cookie** is a sealed envelope the browser hands to the server automatically and scripts cannot open, like an ASP.NET auth cookie. Response caching in an HTTP interceptor is a small in-memory Redis inside the app. UI kits are furniture: **Angular Material** ready-made, **Tailwind** raw timber, **Bootstrap** classic flat-pack.",
+        "terms": [
+          {
+            "term": "HttpOnly",
+            "def": "A cookie flag that hides the cookie from JavaScript; the browser still sends it with matching requests."
+          },
+          {
+            "term": "Secure / SameSite",
+            "def": "Secure sends a cookie only over HTTPS; SameSite controls whether it is sent on cross-site requests (Strict, Lax, None)."
+          },
+          {
+            "term": "XSS",
+            "def": "Cross-site scripting: attacker-controlled script running in your page with the same access as your own code."
+          },
+          {
+            "term": "CSRF",
+            "def": "Cross-site request forgery: another site making the browser send a request that automatically carries your cookies."
+          },
+          {
+            "term": "HttpInterceptorFn",
+            "def": "A function in Angular's HttpClient pipeline that can modify, short-circuit or cache every request and response."
+          },
+          {
+            "term": "BFF",
+            "def": "Backend for frontend: a server-side component that holds OAuth tokens and gives the browser only an HttpOnly session cookie."
+          }
+        ]
+      },
+      "lesson": {
+        "body": "**localStorage** persists per origin until cleared and is readable by any script on the page, including one injected through XSS or a compromised npm package. **sessionStorage** has the same exposure but lives per tab and dies with it. Neither is sent to the server automatically. Fine for preferences and non-sensitive cache; risky for tokens, because one XSS hole lets an attacker exfiltrate a bearer token and use it from anywhere until it expires.\n\nAn **HttpOnly** cookie cannot be read by script, which defeats token theft, though XSS can still make requests while the user is on the page. Because the browser sends cookies automatically, you take on **CSRF**: set `SameSite=Lax` or `Strict`, `Secure`, and use an anti-forgery token. Angular's HttpClient helps: on mutating requests to relative URLs it reads the `XSRF-TOKEN` cookie and sends it as the `X-XSRF-TOKEN` header. The current OAuth guidance for browser apps favours a **BFF**: tokens stay on the server, the browser holds only a session cookie. A middle ground keeps the access token in memory and the refresh token in an HttpOnly cookie. A Content Security Policy reduces XSS risk in every variant.\n\nResponse caching belongs in an `HttpInterceptorFn`: cache GETs with a TTL, invalidate on writes, and clear on logout so the next user on a shared machine sees nothing stale.\n\nUI kits: **Angular Material** gives accessible, tested components plus the CDK (overlay, virtual scroll, a11y) at the price of a recognisable look. **Tailwind** gives utility classes and full design freedom but no behaviour. **Bootstrap** gives a grid and generic components. Responsive means mobile-first breakpoints, flex and grid layouts, and CDK `BreakpointObserver` for logic. React mapping: identical storage rules; MUI, Tailwind and axios or TanStack Query caching play the same roles.",
+        "snippet": "const cache = new Map<string, { at: number; res: HttpResponse<unknown> }>();\nconst TTL_MS = 60_000;\n\nexport const cacheInterceptor: HttpInterceptorFn = (req, next) => {\n  if (req.method !== 'GET') {\n    cache.clear(); // crude: any write invalidates everything\n    return next(req);\n  }\n  const hit = cache.get(req.urlWithParams);\n  if (hit && Date.now() - hit.at < TTL_MS) return of(hit.res.clone());\n  return next(req).pipe(\n    tap(ev => {\n      if (ev instanceof HttpResponse) cache.set(req.urlWithParams, { at: Date.now(), res: ev });\n    }),\n  );\n};\n\nexport const clearHttpCache = () => cache.clear(); // call on logout\n\n// app.config.ts\n// provideHttpClient(withInterceptors([authInterceptor, cacheInterceptor]))",
+        "snippetLang": "typescript",
+        "source": {
+          "title": "Security: XSRF protection and XSS (angular.dev)",
+          "url": "https://angular.dev/best-practices/security"
+        }
+      },
+      "cards": [
+        {
+          "id": "cv.ng-storage-ui.c1",
+          "type": "mc",
+          "prompt": "Where can a script injected through XSS NOT read a session token?",
+          "options": [
+            "An HttpOnly cookie",
+            "localStorage",
+            "sessionStorage",
+            "A JavaScript variable in an Angular service"
+          ],
+          "answer": 0,
+          "why": "HttpOnly hides the cookie from document.cookie and all script APIs. In-memory variables are harder to reach than storage, but injected script runs in the same context and can still get at them."
+        },
+        {
+          "id": "cv.ng-storage-ui.c2",
+          "type": "tf",
+          "prompt": "Moving the token from localStorage into an HttpOnly cookie removes the need for CSRF protection.",
+          "answer": false,
+          "why": "It is the opposite: cookies are sent automatically, so a cookie-based session is what makes CSRF possible. You need SameSite, Secure and an anti-forgery token."
+        },
+        {
+          "id": "cv.ng-storage-ui.c3",
+          "type": "mc",
+          "prompt": "Which statement about sessionStorage is correct?",
+          "options": [
+            "It is scoped to one origin and one browser tab, survives reloads, and is cleared when the tab closes",
+            "It is shared by all tabs of the same origin and cleared when the browser closes",
+            "It is sent to the server with every request like a cookie",
+            "It is encrypted by the browser and unreadable to XSS"
+          ],
+          "answer": 0,
+          "why": "sessionStorage is per tab, which surprises users who open a second tab and appear logged out. It is just as readable by injected script as localStorage."
+        },
+        {
+          "id": "cv.ng-storage-ui.c4",
+          "type": "tf",
+          "prompt": "Angular's HttpClient can automatically read an XSRF-TOKEN cookie and send it as an X-XSRF-TOKEN header on mutating requests to relative URLs.",
+          "answer": true,
+          "why": "This is built-in XSRF support; the server must set the cookie and verify the header. It deliberately skips GET requests and absolute URLs so the token does not leak to other origins."
+        },
+        {
+          "id": "cv.ng-storage-ui.c5",
+          "type": "mc",
+          "prompt": "An internal Angular app needs accessible date pickers, dialogs, tables and virtual scrolling, and the team has no designer. Which choice fits best?",
+          "options": [
+            "Angular Material with the CDK",
+            "Tailwind CSS alone",
+            "Bootstrap's CSS without an Angular component library",
+            "Hand-written components with plain CSS"
+          ],
+          "answer": 0,
+          "why": "Material ships tested, accessible behaviour, and the CDK provides virtual scrolling and overlays. Tailwind is excellent for custom design but gives you no components or keyboard handling."
+        },
+        {
+          "id": "cv.ng-storage-ui.c6",
+          "type": "cloze",
+          "prompt": "Setting a cookie's ___ attribute to Strict or Lax stops the browser from sending it on most cross-site requests.",
+          "answer": "SameSite",
+          "why": "Lax still sends the cookie on top-level GET navigations, Strict never cross-site. SameSite=None requires Secure and restores cross-site sending."
+        }
+      ],
+      "explain": [
+        {
+          "id": "cv.ng-storage-ui.e1",
+          "prompt": "Your CV says you used cookies, localStorage and sessionStorage for caching, and JWT authentication. For a law firm's web app, where would you store the access token and why?",
+          "seconds": 150,
+          "modelAnswer": "The three browser stores differ in who can read them. localStorage and sessionStorage are readable by any script on the origin, so one XSS bug or a compromised dependency can exfiltrate a bearer token, which then works from anywhere until it expires. I use them for preferences and non-sensitive cached data, never for tokens in a law firm's app. My preferred design is a backend for frontend: the server completes the OAuth flow and keeps the tokens, and the browser only gets an HttpOnly, Secure, SameSite cookie. That removes token theft by script, and I handle CSRF with SameSite plus an anti-forgery token, which Angular's HttpClient sends automatically as X-XSRF-TOKEN. If a BFF is not possible, the access token stays in memory and the refresh token in an HttpOnly cookie with rotation. I would add a strict Content Security Policy and short token lifetimes. Response caching sits in an interceptor and is cleared on logout. [Be honest about what you did at Moveo and what you would change.]",
+          "rubric": [
+            "XSS readability of localStorage and sessionStorage",
+            "HttpOnly cookie protects against token theft",
+            "CSRF handled: SameSite plus anti-forgery token",
+            "BFF or in-memory access token alternative",
+            "CSP and short lifetimes as defence in depth",
+            "Honest reflection on own past approach"
+          ]
+        },
+        {
+          "id": "cv.ng-storage-ui.e2",
+          "prompt": "You list Angular Material, Tailwind and Bootstrap. When would you pick each, and how do you make a UI responsive?",
+          "seconds": 120,
+          "modelAnswer": "Angular Material when I need many complex, accessible components quickly and the client accepts a Material look: date pickers, dialogs, tables, keyboard handling and the CDK with overlays and virtual scrolling are done and tested. Tailwind when there is a real design system or brand to match: utility classes give full control, the build strips unused classes, but you build or buy behaviour yourself, often on top of the CDK or headless components. Bootstrap when a team wants a familiar grid and simple components with minimal learning curve, typical for internal admin tools. I avoid mixing two CSS frameworks because their resets and spacing scales fight. Responsive design starts mobile first: flexbox and CSS grid layouts, breakpoints for layout changes, fluid typography, and touch-sized targets; in Angular, CDK BreakpointObserver for logic that must change, such as switching a table to cards. The same choices carry to React with MUI and Tailwind. [Name which kit you used for which Moveo or InterAdria screen and why.]",
+          "rubric": [
+            "Material: accessible components and CDK, opinionated look",
+            "Tailwind: design freedom, no behaviour",
+            "Bootstrap: grid and quick standard components",
+            "Warns against mixing frameworks",
+            "Mobile-first layout with flex or grid and breakpoints",
+            "Maps to React equivalents or own project"
+          ]
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "cv.ng-storage-ui.s1",
+          "situation": "A security review of a document-review web app for a law firm flags that the OAuth access and refresh tokens are kept in localStorage. The app already has a .NET backend, and the client wants the finding closed before go-live in a month.",
+          "question": "What do you propose?",
+          "options": [
+            {
+              "text": "Introduce a backend-for-frontend: the .NET server holds the tokens, the browser gets an HttpOnly, Secure, SameSite session cookie, plus anti-forgery tokens and a strict CSP.",
+              "verdict": "best",
+              "why": "It takes tokens out of script reach entirely, handles the CSRF trade-off explicitly and matches current OAuth guidance for browser apps."
+            },
+            {
+              "text": "Keep the access token only in memory and move the refresh token to an HttpOnly cookie with rotation.",
+              "verdict": "ok",
+              "why": "A real improvement that shrinks the exposure window, but the access token is still reachable by injected script while the page is open."
+            },
+            {
+              "text": "Encrypt the tokens before writing them to localStorage, with the key in the Angular bundle.",
+              "verdict": "bad",
+              "why": "Any injected script can read the key from the same bundle and decrypt them; it adds complexity without any protection."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "boss": {
+    "questions": [
+      {
+        "id": "cv.boss.ng-1",
+        "prompt": "A large Angular dashboard is janky: typing and scrolling stutter. Walk me through how you would find and fix it.",
+        "seconds": 180,
+        "modelOutline": "Start by measuring, not guessing: reproduce with production build, use the Chrome performance panel and Angular DevTools profiler to see whether time goes to change detection, rendering, scripting or network. Then fix in order of payoff. Reduce how often Angular checks: OnPush, signals, immutable updates, and on Angular 21 or later consider zoneless. Reduce what each check costs: no function calls or impure pipes in templates, use computed signals or memoized selectors. Reduce DOM work: @for with track by id, CDK virtual scrolling for large lists, debounce inputs. Reduce what loads: lazy routes, @defer for heavy charts, check bundle size. Fix leaks: unsubscribed streams via takeUntilDestroyed or async pipe. Verify with the same measurement, add a budget in angular.json, and explain the trade-offs to the team.",
+        "rubric": [
+          "Measures first with DevTools or profiler on a production build",
+          "OnPush, signals and immutable updates",
+          "Removes impure pipes or template function calls",
+          "track by id and virtual scrolling for large lists",
+          "Lazy loading or @defer for heavy parts",
+          "Checks for subscription leaks",
+          "Re-measures and adds a guard such as bundle budgets",
+          "Mentions zoneless status or React analogue accurately"
+        ]
+      },
+      {
+        "id": "cv.boss.ng-2",
+        "prompt": "Your Angular experience lists CanLoad, NgRx, guards and localStorage caching from 2022 to 2024. If you rebuilt that ERP front end today, what would you change, and what carries over to a React role?",
+        "seconds": 180,
+        "modelOutline": "Acknowledge the dates honestly, then modernise point by point. Guards: functional guards, canMatch instead of the deprecated CanLoad, and authorization enforced on the API. State: signals for local state, SignalStore or signal services for features, global NgRx only where state is shared and traceability matters. Rendering: standalone components, built-in control flow instead of the deprecated ngIf and ngFor, OnPush or zoneless, @defer. Forms: typed reactive forms, evaluate Signal Forms now stable in v22. Storage: tokens out of localStorage into a BFF with HttpOnly cookies. Then map to React: switchMap to AbortController or TanStack Query, NgRx to Redux Toolkit or Zustand, guards to route wrappers or loaders, reactive forms to React Hook Form, OnPush to memo. Close with the principles that transfer regardless of framework.",
+        "rubric": [
+          "Owns the dated parts without being defensive",
+          "CanLoad to canMatch, functional guards, server-side authz",
+          "Right-sized state: signals, SignalStore, NgRx only when shared",
+          "Standalone, control flow, OnPush or zoneless, @defer",
+          "Moves tokens out of localStorage",
+          "Concrete React equivalents for at least three concepts",
+          "Names principles that transfer across frameworks"
+        ]
+      }
+    ]
+  }
+}

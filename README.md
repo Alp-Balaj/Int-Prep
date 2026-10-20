@@ -9,6 +9,7 @@ https://claude.ai/artifact/WvG8yHupQi5obCC3WZ39q6
 
 - `brian-brennt/index.html` and `brian-brennt/app.js` — the game (plain HTML/CSS/JS, no build step).
 - `brian-brennt/content/*.json` — content packs: lessons, recall cards, explain prompts, scenarios and hearing (boss) questions per tier. Schema in `content/SCHEMA.md`; validate with `node content/validate.js <pack.json>`.
+- `brian-brennt/content/cv-*.json` — the "Your CV, line by line" tier (`cv`): every technology and claim on the CV, so any line an interviewer picks can be defended.
 - `brian-brennt/content/stories.json`, `quests.json` — story prompts and the 14-day schedule.
 - `brian-brennt/test-local.html` — headless smoke test. Serve the folder (`python3 -m http.server 8765`) and open it in Chromium headless with `--enable-logging=stderr` to see `[TEST]` lines.
 

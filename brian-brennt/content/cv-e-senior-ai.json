@@ -1,0 +1,1077 @@
+{
+ "tier": {
+  "id": "cv",
+  "name": "Your CV, line by line",
+  "level": 2,
+  "tease": "You wrote 'Kafka' on your CV. The interviewer asks how consumer groups rebalance. Go."
+ },
+ "nodes": [
+  {
+   "id": "cv.pitch",
+   "title": "The 90-second pitch",
+   "tease": "'Walk me through your CV.' Most candidates read it aloud. Why does that lose the room in 30 seconds?",
+   "primer": {
+    "problem": "Every interview opens with 'walk me through your CV'. The interviewer already has the paper. What they want is the story behind it: how you grew, what you owned, and why this job is the obvious next step. A list of employers and frameworks answers none of that and wastes your strongest minute.",
+    "picture": "Think of the pitch as a **commit history with a good message on each commit**, not a dump of the whole repo. Three commits: **InterAdria** (2022-24, learned .NET, SQL Server and delivery for government and private clients), **Moveo** (2024-now, microservices, owning the company ERP, building agentic AI and MCP servers), then the **next commit**: ISA's Senior AI Engineer role, where agents, security and client work meet. Each step names one thing you *owned* and points at the next.",
+    "sketch": "InterAdria 2022-24        Moveo 2024-now              ISA, Senior AI Engineer\n.NET, SQL, SSRS     ──▶   microservices, Kafka  ──▶   agents, RAG, AWS,\ngov + private clients     ERP ownership, MCP          security, law-firm clients\n   'I learned to ship'       'I learned to own'          'I want to own this'",
+    "terms": [
+     {
+      "term": "Arc",
+      "def": "The through-line of your story: each role gave you something that makes the next role a logical step."
+     },
+     {
+      "term": "Scope of ownership",
+      "def": "What you were accountable for end to end: a module, a system, a team's quality bar, not years served."
+     },
+     {
+      "term": "Hook",
+      "def": "One concrete detail in the pitch that invites the follow-up question you most want to be asked."
+     },
+     {
+      "term": "Why this role",
+      "def": "The closing line that connects your past work to this employer's specific needs, proving you read the job ad."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "A strong 'walk me through your CV' runs about 90 seconds, roughly 200-230 spoken words, and follows **past, present, future**. Past: InterAdria, March 2022 to August 2024, web apps on .NET Core and .NET Framework with Razor Pages, Angular and SQL Server, for government institutions and private companies. The one-line lesson: you learned to deliver production systems for demanding clients, including raw SQL reporting and SSRS. Present: Moveo since August 2024, microservices on clean architecture with .NET, Angular, PostgreSQL, Kafka, Redis, Elasticsearch and AWS. The headline is ownership: you took over the company ERP (HR, payroll, tenders, about 50 daily users) after a management change, you mentor juniors and review code, and you build agentic AI workflows and MCP servers that automate development work. Future: ISA wants someone who builds agents and RAG on AWS for law firms where security matters, and you already build the agent plumbing (MCP) and own sensitive systems (payroll).\n\nPlant **hooks**. Saying 'I built MCP servers to automate development tasks' invites the question you have prepared best. Never mention something you cannot defend for five minutes.\n\nThe awkward question is 'Senior after four-plus years?'. Do not argue about years. Argue **scope**: 'Seniority for me is what I am accountable for. At Moveo I own the ERP end to end, I set the review bar for juniors, and I choose how we use AI in our workflow.' Then give one example with [your number]. Calm, factual, no defensiveness.\n\nPractise out loud with a timer. If you pass two minutes, cut framework names first; they are on the paper already.",
+    "snippet": "0-20s   Past:    InterAdria, .NET + SQL Server, gov and private clients\n20-60s  Present: Moveo, microservices, took over the ERP (~50 daily users),\n                 mentoring + reviews, agentic AI and MCP servers\n60-80s  Proof:   one result with [your number]\n80-90s  Future:  why ISA: agents + RAG + security for law firms",
+    "snippetLang": "text",
+    "source": {
+     "title": "How to Answer 'Tell Me About Yourself' (The Muse)",
+     "url": "https://www.themuse.com/advice/tell-me-about-yourself-interview-question-answer-examples"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.pitch.c1",
+     "type": "mc",
+     "prompt": "Which structure best fits a 90-second 'walk me through your CV' answer?",
+     "options": [
+      "Past role, present role with your biggest ownership, then why this role is the next step",
+      "Every employer in order with the full technology list for each",
+      "Start with hobbies and education to build rapport, then jobs",
+      "Skip history and go straight to salary and notice period"
+     ],
+     "answer": 0,
+     "why": "Past-present-future gives the interviewer an arc and ends on fit. Reading out every technology is the tempting default, but they already have the paper and it buries what you owned."
+    },
+    {
+     "id": "cv.pitch.c2",
+     "type": "tf",
+     "prompt": "When challenged on 'Senior' with fewer years than other candidates, the best response is to argue that years of experience do not matter.",
+     "answer": false,
+     "why": "Arguing the premise sounds defensive. Reframe to scope instead: what you own end to end (the ERP), the bar you set for others (reviews, mentoring), and one result."
+    },
+    {
+     "id": "cv.pitch.c3",
+     "type": "cloze",
+     "prompt": "A detail you deliberately plant in your pitch to invite a follow-up you have prepared is called a ___.",
+     "answer": "hook",
+     "why": "Hooks steer the interview toward your strongest material, such as the MCP servers. The flip side: never plant a hook you cannot defend for five minutes."
+    },
+    {
+     "id": "cv.pitch.c4",
+     "type": "mc",
+     "prompt": "Which Moveo fact best evidences seniority as scope of ownership?",
+     "options": [
+      "Taking over the company ERP (HR, payroll, tenders) after a management change",
+      "Using Tailwind CSS and Angular Material",
+      "Attending daily stand-ups",
+      "Deploying with Azure DevOps"
+     ],
+     "answer": 0,
+     "why": "Owning a system that a whole company relies on is accountability, which is what 'senior' means. Tools and ceremonies are things every mid-level engineer also lists."
+    },
+    {
+     "id": "cv.pitch.c5",
+     "type": "mc",
+     "prompt": "What is the strongest 'why this role' close for ISA's Senior AI Engineer position?",
+     "options": [
+      "Linking your MCP and agentic work plus ownership of sensitive payroll data to ISA's agents, RAG and security work for law firms",
+      "Saying you want to learn AI because it is the future",
+      "Saying ISA is a well-known company with good benefits",
+      "Saying you are open to any role the company has"
+     ],
+     "answer": 0,
+     "why": "A good close maps your evidence to their needs. 'I want to learn AI' is honest but positions you as a junior to be trained rather than a senior who delivers."
+    },
+    {
+     "id": "cv.pitch.c6",
+     "type": "tf",
+     "prompt": "If your spoken pitch runs over two minutes, the first thing to cut is the list of framework names.",
+     "answer": true,
+     "why": "Framework names are already on the CV and carry no story. Cut them before you cut the ownership example or the result with a number."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.pitch.e1",
+     "prompt": "Walk me through your CV.",
+     "seconds": 90,
+     "modelAnswer": "I am a software engineer from Prishtina, and my path has moved steadily from building features to owning systems. I started at InterAdria in 2022, building .NET and Angular web applications on SQL Server for government institutions and private companies. That taught me to ship for demanding clients, and to write serious SQL, because a lot of the reporting ran on raw queries and SSRS. In August 2024 I joined Moveo, where I work on microservices with .NET, Angular, PostgreSQL, Kafka and AWS. The biggest step there was taking over the company ERP after a management change: HR, payroll and tender modules, around 50 daily users, so I own it end to end. I also mentor juniors and run code reviews. Over the last period I have built agentic AI workflows and MCP servers that automate development tasks, which [your result]. That is why this role fits: ISA builds agents and RAG for law firms, where correctness and security decide everything, and that is exactly the kind of work I want to own.",
+     "rubric": [
+      "Past, present, future structure, under two minutes",
+      "Named ERP ownership as the seniority evidence",
+      "Planted the MCP and agentic AI hook",
+      "Included one concrete result or a clear placeholder you filled",
+      "Closed with why ISA specifically: agents, RAG, security, law firms"
+     ]
+    },
+    {
+     "id": "cv.pitch.e2",
+     "prompt": "You have about four years of experience. Why should we hire you as a Senior AI Engineer?",
+     "seconds": 90,
+     "modelAnswer": "Fair question. I do not measure seniority in years; I measure it in what I am accountable for. At Moveo I took over the company ERP after a management change. Nobody handed me a spec: I had to understand HR, payroll and tender modules, decide what to stabilise first, and keep around 50 people working every day. I set the review bar for the juniors I mentor, which means I have to explain why, not just what. And I chose how we bring AI into our workflow: I built MCP servers and agentic workflows for development tasks, and I made correctness the constraint, so [how you guarded it, e.g. tests and review gates]. On AI specifically, the field is young enough that what counts is having shipped real tool integrations and having seen how they fail. I have done that. Where I am thinner, for example [area, e.g. Terraform at scale], I will say so and close the gap quickly, the same way I picked up the ERP domain.",
+     "rubric": [
+      "Did not get defensive about years",
+      "Reframed seniority as scope of ownership with the ERP example",
+      "Mentioned setting a bar for others (reviews, mentoring)",
+      "Cited shipped AI work, not just interest",
+      "Honestly named one gap and how you would close it"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.pitch.s1",
+     "situation": "Ten minutes into the ISA interview, the hiring manager says: 'Your CV lists about thirty technologies. Which three would you bet the job on?' You have Angular, .NET, Kafka, Elasticsearch, MCP and more on the page, and the role is about agents for law firms.",
+     "question": "What do you do?",
+     "options": [
+      {
+       "text": "Pick .NET plus SQL as your depth, MCP and agentic workflows as your AI edge, and ownership of the ERP's sensitive data as your security angle, with one sentence of evidence each.",
+       "verdict": "best",
+       "why": "It shows you know where your depth is and maps it to the role. Three bets with evidence beat thirty claims."
+      },
+      {
+       "text": "Say you are equally strong in all of them because you used them in production.",
+       "verdict": "bad",
+       "why": "Nobody is equally deep in thirty tools. It invites a deep-dive on the weakest one, such as Kafka rebalancing, and erodes trust."
+      },
+      {
+       "text": "Pick Angular, RxJS and NgRx because they are the most detailed lines on your CV.",
+       "verdict": "ok",
+       "why": "Defensible and honest, but it ignores the role. ISA is hiring for agents, AWS and security; lead with what transfers there."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.mcp-servers",
+   "title": "MCP servers, in depth",
+   "tease": "'You built MCP servers. Is yours stateless under the July 2026 spec?' Can you answer that?",
+   "primer": {
+    "problem": "Saying 'I built MCP servers' invites the hardest follow-ups on your CV: which transport, which SDK, how auth works, and what stops a poisoned tool from steering the model. You need to describe your own server as an architecture with a security story, not as a demo you once ran.",
+    "picture": "An MCP server is like an **ASP.NET Web API built for a model instead of a browser**. Controllers become **tools** (actions the model may call), GET endpoints become **resources** (readable data), and reusable request templates become **prompts**. The wire format is **JSON-RPC 2.0**. Locally it runs as a child process over **stdio**; remotely it sits behind **Streamable HTTP** and is protected like any API, with OAuth bearer tokens issued specifically for it. The model reads your tool descriptions, so a description is effectively code.",
+    "sketch": "Host (IDE / agent) ── client ──JSON-RPC──▶ your MCP server\n                       stdio (local)      │ tools:     get_work_item\n                       Streamable HTTP    │ resources: repo://docs/...\n                       + OAuth bearer     │ prompts:   review-pr\n                                          ▼\n                              Azure DevOps / DB / Git (least privilege)",
+    "terms": [
+     {
+      "term": "JSON-RPC 2.0",
+      "def": "A tiny message format: requests with a method, params and id, responses with a result or error, notifications without an id."
+     },
+     {
+      "term": "stdio transport",
+      "def": "The host starts your server as a subprocess and exchanges newline-delimited JSON over standard input and output."
+     },
+     {
+      "term": "Streamable HTTP",
+      "def": "The remote transport: one HTTP endpoint, each message a POST, replies as JSON or a request-scoped SSE stream."
+     },
+     {
+      "term": "Tool poisoning",
+      "def": "Hidden malicious instructions in a tool's description or output that the model obeys but the user never sees."
+     },
+     {
+      "term": "Confused deputy",
+      "def": "A privileged component tricked into using its own authority on behalf of a caller who should not have it."
+     },
+     {
+      "term": "Resource server",
+      "def": "OAuth term for an API that accepts access tokens; since 2025-06-18 remote MCP servers are classified this way."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "Walk an interviewer through your server in four layers. **Purpose**: the one development task it automates, who uses it, [what it saved]. **Surface**: the tools you exposed, each with a narrow `inputSchema` and a description written for the model; read-only data as resources. **Transport and SDK**: stdio for a local developer tool, Streamable HTTP for a shared server. The old HTTP+SSE transport has been deprecated since 2025-03-26. The official C# SDK (`ModelContextProtocol`, co-maintained with Microsoft) reached 1.0 in March 2026; the Python SDK (`mcp`) offers `FastMCP` with `@mcp.tool()` decorators.\n\nKnow the revisions. **2025-06-18** made remote servers OAuth 2.1 resource servers that publish Protected Resource Metadata (RFC 9728), required clients to send Resource Indicators (RFC 8707) so tokens are bound to one server, and added structured tool output and elicitation. **2025-11-25** followed, and **2026-07-28** is current: no `initialize` handshake and no `Mcp-Session-Id`; each request carries version and capabilities in `_meta`, a mandatory `server/discover` replaces the handshake, and Sampling, Roots and Logging are deprecated. Client ID Metadata Documents are now preferred over Dynamic Client Registration.\n\n**Security** is where seniors separate. Least privilege: the server's credentials should only read what the tools need, ideally per user, not one god token. Never pass a client's token through to downstream APIs; validate that the token's audience is your server. Treat tool descriptions from third-party servers as untrusted input: tool poisoning and 'rug pulls' (descriptions changed after approval) are real. Confused deputy: a proxy server with a static OAuth client id must get user consent per client. Require human confirmation for destructive tools, log every call with a correlation id, and validate arguments as if the model were an attacker.",
+    "snippet": "var builder = Host.CreateApplicationBuilder(args);\n// stdout is the protocol channel: send all logs to stderr\nbuilder.Logging.AddConsole(o =>\n    o.LogToStandardErrorThreshold = LogLevel.Trace);\nbuilder.Services\n    .AddMcpServer()\n    .WithStdioServerTransport()\n    .WithToolsFromAssembly();\nawait builder.Build().RunAsync();\n\n[McpServerToolType]\npublic static class WorkItemTools\n{\n    [McpServerTool, Description(\"Read one work item by id. Read-only.\")]\n    public static Task<string> GetWorkItem(\n        IWorkItemClient client,\n        [Description(\"Numeric work item id\")] int id)\n        => client.GetSummaryAsync(id);\n}",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "Model Context Protocol specification, 2026-07-28 changelog",
+     "url": "https://modelcontextprotocol.io/specification/2026-07-28/changelog"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.mcp-servers.c1",
+     "type": "mc",
+     "prompt": "Your local stdio MCP server writes debug output with Console.WriteLine. What happens?",
+     "options": [
+      "The output corrupts the JSON-RPC stream on stdout and the client fails to parse messages",
+      "Nothing; the client ignores non-JSON lines",
+      "The logs appear in the host's log panel automatically",
+      "The server switches to Streamable HTTP"
+     ],
+     "answer": 0,
+     "why": "With stdio, stdout is the protocol channel, so logs must go to stderr. The tempting belief that clients skip junk lines is wrong; a stray line breaks message framing."
+    },
+    {
+     "id": "cv.mcp-servers.c2",
+     "type": "tf",
+     "prompt": "Under the 2026-07-28 MCP revision, a client must complete an initialize handshake and keep an Mcp-Session-Id header before calling tools.",
+     "answer": false,
+     "why": "2026-07-28 removed both the initialize handshake and Mcp-Session-Id. Each request carries version and capabilities in _meta, and server/discover provides up-front discovery."
+    },
+    {
+     "id": "cv.mcp-servers.c3",
+     "type": "mc",
+     "prompt": "Your remote MCP server receives a user's OAuth token and needs to call Azure DevOps. What is correct?",
+     "options": [
+      "Validate the token was issued for your server, then call Azure DevOps with a separate credential scoped to what the tool needs",
+      "Forward the same token to Azure DevOps so the user's identity flows through",
+      "Skip validation because the MCP client already authenticated the user",
+      "Use one admin PAT for all users so permissions never fail"
+     ],
+     "answer": 0,
+     "why": "The spec forbids token passthrough: tokens must be audience-bound to your server. Forwarding feels like 'identity flows through' but bypasses audience checks and creates a confused deputy; an admin PAT violates least privilege."
+    },
+    {
+     "id": "cv.mcp-servers.c4",
+     "type": "cloze",
+     "prompt": "Hidden instructions in a third-party tool's description that steer the model without the user seeing them are called tool ___.",
+     "answer": "poisoning",
+     "why": "The model reads full descriptions while UIs often show short names. Defences: review and pin descriptions, alert on changes (rug pulls), and treat tool text as untrusted input."
+    },
+    {
+     "id": "cv.mcp-servers.c5",
+     "type": "mc",
+     "prompt": "Which three primitives does an MCP server expose?",
+     "options": [
+      "Tools, resources and prompts",
+      "Controllers, services and repositories",
+      "Agents, memories and plans",
+      "Functions, embeddings and indexes"
+     ],
+     "answer": 0,
+     "why": "Tools are model-controlled actions, resources are application-controlled data by URI, prompts are user-chosen templates. The others are architecture or RAG vocabulary, not MCP primitives."
+    },
+    {
+     "id": "cv.mcp-servers.c6",
+     "type": "mc",
+     "prompt": "Since the 2025-06-18 revision, how does a remote MCP server tell clients where to get tokens?",
+     "options": [
+      "It publishes OAuth Protected Resource Metadata (RFC 9728) pointing to its authorization server",
+      "It embeds an API key in the tools/list response",
+      "It asks the model to request credentials from the user in chat",
+      "It relies on the Mcp-Session-Id header as the credential"
+     ],
+     "answer": 0,
+     "why": "2025-06-18 classified MCP servers as OAuth resource servers with RFC 9728 metadata, and clients send RFC 8707 resource indicators. Session ids were never credentials and are gone in 2026-07-28."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.mcp-servers.e1",
+     "prompt": "You say you built MCP servers. Walk me through one: what it does, how it is built, and how it is secured.",
+     "seconds": 150,
+     "modelAnswer": "The one I would pick is [server name], which [the development task it automates, e.g. reads work items and repo context so the agent can draft changes]. The users are [who], and it saves [your number]. It is a C# server on the official ModelContextProtocol SDK. I expose [n] tools, each with a narrow input schema and a description written for the model, because the description is effectively the API contract the model reads. Read-only context such as docs goes out as resources. It runs over stdio on developer machines, so logging goes to stderr. For a shared deployment I would use Streamable HTTP behind OAuth, with the server acting as a resource server and validating the token audience; I would never forward the user's token downstream. On security: the downstream credential is scoped to read only what the tools need, destructive actions need human confirmation, arguments are validated as if the model were hostile, and every call is logged with a correlation id. What I would change now is [one improvement], for example aligning with the stateless 2026-07-28 revision.",
+     "rubric": [
+      "Named the concrete task, users and benefit (filled placeholders)",
+      "Explained tools vs resources and why descriptions matter",
+      "Named transport and SDK correctly (stdio vs Streamable HTTP)",
+      "Covered least privilege and no token passthrough",
+      "Mentioned confirmation for destructive tools and call logging",
+      "Named one honest improvement"
+     ]
+    },
+    {
+     "id": "cv.mcp-servers.e2",
+     "prompt": "A law firm wants to let its lawyers plug third-party MCP servers into their AI assistant. What are the risks and what controls do you put in place?",
+     "seconds": 120,
+     "modelAnswer": "The main risk is that a third-party server's tool descriptions and outputs go straight into the model's context, so they are effectively instructions. A poisoned description can tell the model to read a privileged document and pass it to another tool, and a rug pull changes a description after approval. Second, over-broad credentials: if a server holds one powerful token, any prompt injection inherits that power. Third, confused deputy and token misuse in remote servers. Controls: an allow-list of reviewed servers with pinned versions and alerts on description changes; only remote servers that implement MCP's OAuth model with audience-bound tokens; least-privilege, per-user credentials so the agent can never see more than the lawyer could; human confirmation for anything that sends, deletes or shares; and a full audit log of every tool call with inputs, outputs and the user, so the firm can reconstruct what happened. I would also separate matters so one session cannot reach another client's data.",
+     "rubric": [
+      "Identified tool descriptions and outputs as untrusted input (poisoning, rug pull)",
+      "Named least privilege and per-user credentials",
+      "Required OAuth with audience-bound tokens, no passthrough",
+      "Human confirmation for destructive or outbound actions",
+      "Audit log of every tool call"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.mcp-servers.s1",
+     "situation": "A colleague at ISA wants to demo your MCP server to a law-firm client next week. It currently runs over stdio with a personal access token in an environment variable that has full read-write access to the repository and work items.",
+     "question": "What do you do before the demo?",
+     "options": [
+      {
+       "text": "Replace the token with a read-only, narrowly scoped credential, put confirmation in front of any write tool, and run the demo against a sandbox project.",
+       "verdict": "best",
+       "why": "Least privilege plus a sandbox removes the worst failure (the model writing or leaking real data) without blocking the demo."
+      },
+      {
+       "text": "Move the server to Streamable HTTP with OAuth before showing it to anyone.",
+       "verdict": "ok",
+       "why": "Right for a shared deployment, but it is a week of work and does not fix the over-privileged downstream token, which is the actual risk."
+      },
+      {
+       "text": "Keep the setup; it is only a demo and the client will not see the token.",
+       "verdict": "bad",
+       "why": "The risk is not the client seeing the token but the model using it. One injected instruction during a live demo can modify real work items."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.agentic-dev",
+   "title": "Agentic workflows for dev work",
+   "tease": "Your 'agent' always runs the same five steps. The interviewer calls it a script. Are they right?",
+   "primer": {
+    "problem": "Your CV says you built agentic AI workflows to automate development tasks and that correctness is your top priority. An interviewer will test both halves: is it really agentic or just a script with an LLM call, and how do you know the output is right before it reaches the codebase?",
+    "picture": "A **script** is like a fixed Azure DevOps pipeline: the YAML decides every step. A **workflow** puts LLM calls inside that fixed path. An **agent** is a loop where the model chooses the next step and tool, sees the result, and decides again until done. Correctness comes from wrapping the non-deterministic part in deterministic **gates**: compile, tests, linters, a human review, and **evals** that score the agent on known cases before you trust a change.",
+    "sketch": "task ─▶ [ model picks tool ─▶ tool runs ─▶ observe ] loop\n                        │\n                        ▼ proposed change\n           gate 1: build + tests + lint (deterministic)\n           gate 2: human review of a small diff\n           gate 3: evals on a golden set (before rollout)\n                        │\n                        ▼ merged",
+    "terms": [
+     {
+      "term": "Agent loop",
+      "def": "Model chooses an action, a tool executes it, the result returns to the model, repeated until a stop condition."
+     },
+     {
+      "term": "Workflow",
+      "def": "LLM calls orchestrated along predefined code paths; the developer, not the model, decides the control flow."
+     },
+     {
+      "term": "Eval",
+      "def": "A repeatable test of model or agent output against a set of cases with expected results or scoring rules."
+     },
+     {
+      "term": "Golden set",
+      "def": "A curated collection of inputs with known good outputs used to measure quality before and after changes."
+     },
+     {
+      "term": "Review gate",
+      "def": "A required approval step, human or automated, that output must pass before it can be merged or acted on."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "Anthropic's 'Building effective agents' draws the line clearly. **Workflows** orchestrate LLMs and tools through predefined code paths: prompt chaining, routing, parallelisation. **Agents** let the model dynamically direct its own process and tool use in a loop. A script calls no model and has no judgement. So if your automation always runs the same steps with one LLM call, call it an LLM workflow and be proud of it; the article recommends the simplest pattern that works. If the model decides which file to read next, which test to run, and when it is done, it is agentic.\n\nThe correctness claim needs evidence, not adjectives. Describe your **gates**. Deterministic first: the change must compile, existing tests must pass, new behaviour needs a test, linters and analyzers run. Then a **human review** of a small diff, because reviewers miss bugs in 800-line AI dumps. Then **evals**: a golden set of past tasks with known good outcomes, run whenever you change the prompt, model or tools, so you notice regressions instead of discovering them in production. Keep the agent's permissions narrow (read repo, open a PR, never push to main) and log every step so a bad output can be traced.\n\nThe interview sentence: 'AI writes the first draft; tests, review and evals decide whether it ships.' Then attach your evidence: [how many PRs or tasks], [what share needed rework], [one bug the gates caught]. If you lack a metric, say what you would measure: acceptance rate of agent PRs, defects traced to AI changes, review time. Honest measurement beats invented precision.",
+    "source": {
+     "title": "Building effective agents (Anthropic Engineering)",
+     "url": "https://www.anthropic.com/engineering/building-effective-agents"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.agentic-dev.c1",
+     "type": "mc",
+     "prompt": "What makes an automation agentic rather than an LLM workflow?",
+     "options": [
+      "The model decides the next step and which tool to call, in a loop, based on results",
+      "It calls a large language model at least once",
+      "It runs in the cloud on a schedule",
+      "It uses more than one prompt"
+     ],
+     "answer": 0,
+     "why": "Agency is about who controls the flow. Calling a model, even several times along a fixed path, is a workflow; that is still useful, but call it what it is."
+    },
+    {
+     "id": "cv.agentic-dev.c2",
+     "type": "tf",
+     "prompt": "Anthropic's guidance recommends starting with the simplest solution, often a workflow or single call, and adding agentic autonomy only when it is needed.",
+     "answer": true,
+     "why": "Agents trade latency, cost and predictability for flexibility. Reaching for a full agent where a fixed chain works is a common over-engineering signal interviewers look for."
+    },
+    {
+     "id": "cv.agentic-dev.c3",
+     "type": "mc",
+     "prompt": "Which gate should run first on an AI-generated code change?",
+     "options": [
+      "Deterministic checks: build, existing tests, linters",
+      "Senior human review of the full diff",
+      "A second LLM asked whether the code looks correct",
+      "Deployment to production behind a feature flag"
+     ],
+     "answer": 0,
+     "why": "Cheap, deterministic checks filter obvious failures before spending human attention. An LLM judge is useful for evals but cannot replace a compiler or tests."
+    },
+    {
+     "id": "cv.agentic-dev.c4",
+     "type": "cloze",
+     "prompt": "A curated set of past tasks with known good outcomes, rerun whenever you change prompt, model or tools, is called a ___ set.",
+     "answer": "golden",
+     "why": "Without a golden set, a prompt tweak that breaks three cases looks fine on the one you tried by hand. It turns 'it seems better' into a measured regression check."
+    },
+    {
+     "id": "cv.agentic-dev.c5",
+     "type": "mc",
+     "prompt": "An interviewer asks how you know your agent's changes are correct. Which answer is strongest?",
+     "options": [
+      "Every change passes build, tests and a human review of a small diff, and I track [your acceptance or rework rate]",
+      "I use the best available model, so errors are rare",
+      "I read the output carefully before committing",
+      "The agent explains its reasoning, so I can trust it"
+     ],
+     "answer": 0,
+     "why": "Gates plus a metric is evidence. Model quality and self-explanation are not verification; a fluent explanation of wrong code is still wrong code."
+    },
+    {
+     "id": "cv.agentic-dev.c6",
+     "type": "tf",
+     "prompt": "Giving a development agent permission to push directly to main is acceptable as long as the model is highly capable.",
+     "answer": false,
+     "why": "Capability does not remove non-determinism or prompt injection risk. Least privilege means the agent opens a PR and gates decide; the same rule applies to human contributors."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.agentic-dev.e1",
+     "prompt": "Your CV says you keep correctness and code quality top priority while using AI. Prove it.",
+     "seconds": 120,
+     "modelAnswer": "I treat AI output like a pull request from a fast but unproven contributor. It gets the same gates as anyone else, plus a few more. First, deterministic checks: it must build, existing tests must pass, and any new behaviour needs a test, which I often ask the agent to write first so I can review the test before the implementation. Second, small diffs. I scope tasks so a change is reviewable in minutes; a large AI diff is where subtle bugs hide. Third, I review it myself and focus on what models get wrong: invented APIs, missing edge cases, silently swallowed errors, and security issues like unvalidated input. Fourth, for the agentic workflows I built, the agent only has the permissions it needs, opens changes for review rather than pushing, and logs its steps. As for evidence, [your metric, e.g. how many agent changes merged and how many needed rework], and one case where the gates caught [a specific bug]. If I changed the prompt or model, I would rerun a set of known tasks to check for regressions.",
+     "rubric": [
+      "Framed AI output as untrusted contributor work",
+      "Named deterministic gates: build, tests, test-first",
+      "Small diffs and focused human review on typical AI errors",
+      "Least privilege for the agent (PRs, not pushes)",
+      "Gave evidence: a metric or a concrete caught bug",
+      "Mentioned regression checks when prompt or model changes"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.agentic-dev.s1",
+     "situation": "On an ISA engagement, a law firm's IT lead wants an agent that drafts code changes for their document-intake service. Their release deadline is in three weeks and they have only patchy test coverage on the module.",
+     "question": "What do you propose?",
+     "options": [
+      {
+       "text": "Start by having the agent help write characterisation tests for the module, then let it draft small changes as PRs that must pass those tests and human review.",
+       "verdict": "best",
+       "why": "Without tests, nothing can verify agent output. Building the safety net first makes later automation trustworthy and is itself valuable before a release."
+      },
+      {
+       "text": "Let the agent draft changes now and have senior developers review every diff carefully.",
+       "verdict": "ok",
+       "why": "Human review helps, but without tests reviewers carry all the burden and regressions slip through under deadline pressure."
+      },
+      {
+       "text": "Let the agent commit directly to speed up the release, and fix issues after go-live.",
+       "verdict": "bad",
+       "why": "This gives an unverified, non-deterministic process write access to production code for a law firm. Fixing after go-live is the most expensive place to find bugs."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.perf-tuning",
+   "title": "Performance tuning",
+   "tease": "'I made it faster.' How much faster, at which percentile, measured how? Silence loses the point.",
+   "primer": {
+    "problem": "Your CV says you did performance tuning. Interviewers will ask how you found the bottleneck and what changed. Guessing and optimising whatever looks slow wastes days and often fixes the wrong thing. A senior answer shows a method: measure, form a hypothesis, change one thing, measure again, and report with numbers.",
+    "picture": "Treat tuning like **debugging with a stopwatch**. A SQL Server **execution plan** shows where a query spends its time, just as a **profiler** does for .NET code and **Chrome DevTools** Performance panel does for an Angular page. You first find the biggest cost, change one thing, then rerun the same measurement. Latency is reported as **percentiles**: p50 is the typical user, p95 and p99 are the unlucky ones, and averages hide them.",
+    "terms": [
+     {
+      "term": "p95 latency",
+      "def": "The response time that 95 percent of requests beat; the slowest 5 percent take longer than this."
+     },
+     {
+      "term": "Profiler",
+      "def": "A tool that samples or traces running code to show which functions consume time, CPU or memory."
+     },
+     {
+      "term": "APM",
+      "def": "Application performance monitoring: production telemetry of requests, dependencies and errors, such as Application Insights or OpenTelemetry backends."
+     },
+     {
+      "term": "Execution plan",
+      "def": "SQL Server's description of how it runs a query: scans, seeks, joins, and the estimated versus actual row counts."
+     },
+     {
+      "term": "Baseline",
+      "def": "The measurement taken before any change, under the same conditions, that every improvement is compared against."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "The discipline is a loop: **baseline, locate, hypothesise, change one thing, re-measure**. Start from a user-visible symptom ('the payroll report takes 40 seconds', or [your case]) and capture a baseline under repeatable conditions.\n\nLocate the cost with the right tool for the layer. For the browser, Chrome DevTools Performance panel shows long tasks, scripting versus rendering, and the network waterfall; Angular DevTools shows change-detection cycles, which is where your OnPush and lazy-loading work lives. For .NET, `dotnet-counters` gives live CPU, GC and thread-pool numbers, `dotnet-trace` or the Visual Studio profiler shows hot paths, and APM traces show which dependency call dominates a request. For SQL Server, read the **actual** execution plan: look for scans where you expected seeks, key lookups, and large gaps between estimated and actual rows (stale statistics or parameter sniffing). `SET STATISTICS IO, TIME ON` gives logical reads, a more stable metric than wall-clock time. Query Store tracks regressions over time.\n\nReport **percentiles**, not averages. A p50 of 120 ms with a p99 of 4 seconds means one in a hundred users waits four seconds, and if a page makes 100 backend calls, most page loads hit at least one slow call (1 - 0.99^100 is about 63 percent).\n\nState the result like an engineer: 'p95 for the tender search went from [before] to [after] after adding a covering index, measured over [period or load test].' Name what you tried that did not work. If you never captured numbers, say so and explain how you would measure it today; inventing precision is worse than admitting the gap.",
+    "snippet": "SET STATISTICS IO, TIME ON;\n\nSELECT e.Id, e.FullName, p.NetAmount\nFROM   Payroll p\nJOIN   Employee e ON e.Id = p.EmployeeId\nWHERE  p.PeriodId = @periodId;\n\n-- Messages tab: 'Table Payroll. Scan count 1, logical reads 48211'\n-- Plan: Clustered Index Scan on Payroll -> missing index on PeriodId\n\nCREATE INDEX IX_Payroll_PeriodId\n    ON Payroll (PeriodId) INCLUDE (EmployeeId, NetAmount);\n-- rerun: compare logical reads and elapsed time with the baseline",
+    "snippetLang": "sql",
+    "source": {
+     "title": "dotnet-trace performance analysis utility (Microsoft Learn)",
+     "url": "https://learn.microsoft.com/en-us/dotnet/core/diagnostics/dotnet-trace"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.perf-tuning.c1",
+     "type": "mc",
+     "prompt": "An API has a mean latency of 180 ms. Why might users still complain it is slow?",
+     "options": [
+      "The mean hides the tail; p99 could be several seconds",
+      "Users perceive anything over 100 ms as broken",
+      "Mean latency excludes network time by definition",
+      "The mean is always higher than p99"
+     ],
+     "answer": 0,
+     "why": "A few very slow requests barely move the mean but are exactly what users remember. That is why you report p95 and p99 alongside p50."
+    },
+    {
+     "id": "cv.perf-tuning.c2",
+     "type": "cloze",
+     "prompt": "In SQL Server, SET STATISTICS IO ON reports logical ___, a more stable comparison metric than elapsed time.",
+     "answer": "reads",
+     "why": "Logical reads count pages touched and do not vary with cache warmth or server load the way elapsed time does, so before-and-after comparisons are fairer."
+    },
+    {
+     "id": "cv.perf-tuning.c3",
+     "type": "mc",
+     "prompt": "An Angular page feels sluggish when typing in a form. Which tool locates the cause most directly?",
+     "options": [
+      "Chrome DevTools Performance panel plus Angular DevTools profiler to see long tasks and change-detection cycles",
+      "SQL Server execution plans",
+      "dotnet-counters on the API server",
+      "Rewriting the component with OnPush immediately"
+     ],
+     "answer": 0,
+     "why": "Typing lag is usually main-thread work in the browser. Applying OnPush blindly is the tempting fix, but measure first: the cause could be a heavy pipe or a large re-render instead."
+    },
+    {
+     "id": "cv.perf-tuning.c4",
+     "type": "tf",
+     "prompt": "When tuning, changing several things at once is fine as long as the final number improves.",
+     "answer": false,
+     "why": "If you change three things you cannot tell which helped, which did nothing, and which made it worse. One change per measurement keeps causality clear."
+    },
+    {
+     "id": "cv.perf-tuning.c5",
+     "type": "mc",
+     "prompt": "An execution plan shows estimated rows 1 but actual rows 250,000 for one operator. What is the likely cause?",
+     "options": [
+      "Stale statistics or parameter sniffing giving the optimiser a wrong cardinality estimate",
+      "The table has too many indexes",
+      "The query uses a JOIN instead of a subquery",
+      "The server needs more CPU cores"
+     ],
+     "answer": 0,
+     "why": "Big estimate-versus-actual gaps lead to bad plan choices such as nested loops over huge inputs. Hardware is the tempting answer, but the plan is wrong, not the machine."
+    },
+    {
+     "id": "cv.perf-tuning.c6",
+     "type": "cloze",
+     "prompt": "A page fans out to 100 backend calls, each with a 1 percent chance of being slow. Roughly ___ percent of page loads hit at least one slow call.",
+     "answer": "63",
+     "why": "1 - 0.99^100 is about 0.63. Fan-out amplifies tail latency, which is why p99 of dependencies matters more than their averages."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.perf-tuning.e1",
+     "prompt": "Tell me about a performance problem you tuned. How did you find it and how do you know your fix worked?",
+     "seconds": 120,
+     "modelAnswer": "The symptom was [what users saw, e.g. a report or search in the ERP taking too long]. Before touching code I captured a baseline: [metric, e.g. p95 latency or report duration] under repeatable conditions. Then I located the cost. APM tracing showed most of the request time was in one database call, so I captured the actual execution plan. It showed [what you found, e.g. a clustered index scan on a large table and a big gap between estimated and actual rows]. My hypothesis was [a missing covering index or a non-sargable predicate]. I made that single change and reran the same measurement: logical reads dropped from [before] to [after] and p95 went from [before] to [after]. I also tried [something that did not help] and reverted it. Afterwards I [added monitoring or a regression check] so we would notice if it came back. The habit I took from it is to measure before I optimise, because my first guess about the bottleneck is often wrong.",
+     "rubric": [
+      "Started with a user-visible symptom and a baseline",
+      "Named the tool used to locate the cost (APM, profiler, plan, DevTools)",
+      "Stated a hypothesis and changed one thing",
+      "Reported before and after numbers, ideally percentiles",
+      "Mentioned what did not work or how regression is prevented"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.perf-tuning.s1",
+     "situation": "A law-firm client says the document search in the system ISA built is 'slow since last week'. The partner wants it fixed by Friday. You have APM in place but nobody has looked at it yet, and a colleague proposes adding a Redis cache right away.",
+     "question": "What do you do first?",
+     "options": [
+      {
+       "text": "Pull APM traces for the search endpoint over the last two weeks, compare p50 and p95 before and after the change date, and find which dependency got slower.",
+       "verdict": "best",
+       "why": "'Since last week' points to a regression; the traces locate it quickly and tell you whether a cache would even help."
+      },
+      {
+       "text": "Add the Redis cache, since search results are often repeated.",
+       "verdict": "bad",
+       "why": "It guesses at a fix without a cause, adds invalidation risk for legal documents, and may not help if queries are unique."
+      },
+      {
+       "text": "Ask the client for exact examples of slow searches and reproduce them locally.",
+       "verdict": "ok",
+       "why": "Useful for reproduction, but slower and less complete than production traces you already have."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.code-review",
+   "title": "Mentoring and code review",
+   "tease": "Your review has 40 comments about naming. You missed the SQL injection. What kind of senior is that?",
+   "primer": {
+    "problem": "Your CV says you mentored juniors and did code reviews. Interviewers use this to test seniority: do you catch what matters, help people grow without crushing them, and raise the whole team's standard rather than becoming the bottleneck who rewrites everything?",
+    "picture": "A senior review is a **triage**, like reading an execution plan from the most expensive operator down. First **design and correctness**: does this change belong here, does it work, is it safe? Then **tests**, then **readability and naming**, and only then style, which tooling should handle. Mentoring is the same review aimed at a person: explain the *why*, ask questions instead of dictating, and turn repeated comments into team guidelines or analyzers.",
+    "terms": [
+     {
+      "term": "Code health",
+      "def": "The long-term maintainability of the codebase; good reviews approve changes that improve it, even if imperfect."
+     },
+     {
+      "term": "Nit",
+      "def": "A prefix marking a minor, optional comment so the author knows it should not block the merge."
+     },
+     {
+      "term": "PR size",
+      "def": "How many lines and concerns a pull request contains; smaller PRs get faster, more thorough reviews."
+     },
+     {
+      "term": "Blocking comment",
+      "def": "A review comment that must be resolved before approval, reserved for correctness, security or design issues."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "Google's engineering practices give a usable standard: approve a change once it **definitely improves overall code health**, even if it is not perfect. Perfection blocks progress; the bar is 'better than before, and nothing dangerous'.\n\nWhat to look for, in priority order: **design** (does it belong here, does it fit the architecture, is it over-engineered?), **functionality** (edge cases, concurrency, error handling, what users experience), **security** (input validation, authorisation checks, secrets, SQL built from strings), **tests** (do they fail when the code is broken?), then **naming, comments and complexity**. Style belongs to formatters and analyzers, not humans. In your stack that means checking Angular subscriptions are cleaned up, EF queries do not load whole tables, and Kafka consumers are idempotent.\n\nHow to say it: comment on the code, not the person; explain why; label minor points 'Nit:'; and ask questions where you are unsure ('What happens if this list is empty?'). Praise good solutions explicitly, especially to juniors. Respond quickly: Google's guidance is within one business day at most, because slow reviews make people batch changes into bigger, riskier PRs.\n\n**PR size** is a team lever. Around 100 lines is easy to review well; 1,000 lines gets rubber-stamped. Encourage splitting refactors from behaviour changes.\n\nRaising the bar means scaling yourself: turn comments you repeat into a checklist, an analyzer rule or a short guideline; pair with juniors on their first changes in an unfamiliar area; and let them review your code too. Evidence for 'senior' is what changed in the team: [e.g. fewer review rounds, a junior now owning a module, a guideline you introduced].",
+    "source": {
+     "title": "What to look for in a code review (Google Engineering Practices)",
+     "url": "https://google.github.io/eng-practices/review/reviewer/looking-for.html"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.code-review.c1",
+     "type": "mc",
+     "prompt": "According to Google's code review standard, when should a reviewer approve a change?",
+     "options": [
+      "When it definitely improves overall code health, even if it is not perfect",
+      "Only when there is nothing left the reviewer would change",
+      "When it compiles and the author is senior",
+      "After at least two review rounds"
+     ],
+     "answer": 0,
+     "why": "Demanding perfection stalls teams and discourages small improvements. The tempting 'nothing left to change' bar turns review into gatekeeping rather than steady improvement."
+    },
+    {
+     "id": "cv.code-review.c2",
+     "type": "cloze",
+     "prompt": "Prefixing a minor, non-blocking review comment with '___:' tells the author it is optional.",
+     "answer": "Nit",
+     "why": "Separating nits from blocking issues keeps authors from treating every remark as mandatory and makes the important comments stand out."
+    },
+    {
+     "id": "cv.code-review.c3",
+     "type": "mc",
+     "prompt": "A junior's PR is 1,200 lines mixing a refactor with a new feature. What is the best response?",
+     "options": [
+      "Ask them to split the refactor from the behaviour change, and explain why smaller PRs get better reviews",
+      "Approve it to avoid slowing them down",
+      "Rewrite it yourself over the weekend",
+      "Leave 60 detailed comments on every file"
+     ],
+     "answer": 0,
+     "why": "Large mixed PRs hide bugs and get rubber-stamped. Rewriting it yourself teaches nothing and makes you the bottleneck; explaining the split builds a lasting habit."
+    },
+    {
+     "id": "cv.code-review.c4",
+     "type": "tf",
+     "prompt": "Code formatting and brace style are a good use of senior reviewers' comments.",
+     "answer": false,
+     "why": "Formatters and analyzers enforce style automatically and without friction. Senior attention should go to design, correctness, security and tests."
+    },
+    {
+     "id": "cv.code-review.c5",
+     "type": "mc",
+     "prompt": "Which is the best way to phrase a concern about a possible null case?",
+     "options": [
+      "'What happens here if the employee has no contract yet?'",
+      "'You forgot nulls again.'",
+      "'This is wrong.'",
+      "'I would never write it like this.'"
+     ],
+     "answer": 0,
+     "why": "A question about the code invites the author to reason and learn, and it stays correct if you were mistaken. The others target the person or give no information."
+    },
+    {
+     "id": "cv.code-review.c6",
+     "type": "tf",
+     "prompt": "Slow review turnaround tends to make authors bundle work into larger PRs.",
+     "answer": true,
+     "why": "If each review costs days, people batch changes to pay the cost once, which makes reviews worse. Fast turnaround keeps PRs small."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.code-review.e1",
+     "prompt": "What do you look for when you review a pull request, and how have you raised the bar for the juniors you mentor?",
+     "seconds": 120,
+     "modelAnswer": "I review in priority order. First design: does this change belong here and fit our clean-architecture layers, or is it bending the structure? Then correctness: edge cases, error handling, concurrency, and in our stack things like unsubscribed observables in Angular, EF queries pulling whole tables, or Kafka consumers that are not idempotent. Then security: validation, authorisation checks, anything built from strings into SQL. Then tests, and whether they would actually fail if the code broke. Naming and readability come last, and style is the formatter's job. I approve when the change clearly improves the code, not when it is perfect, and I mark minor points as nits. I ask questions rather than dictate, and I explain the why so the lesson transfers. To raise the bar beyond my own reviews, I [e.g. turned repeated comments into a checklist or analyzer rule], pair with juniors on their first change in a new area, and have them review my PRs too. The result I point to is [e.g. a junior now owning a module, or fewer review rounds].",
+     "rubric": [
+      "Prioritised design, correctness and security over style",
+      "Gave stack-specific examples (Angular, EF, Kafka)",
+      "Approval bar: improves code health, nits marked",
+      "Feedback style: questions, explain why, about the code",
+      "Scaled the bar: checklist, analyzer, pairing",
+      "Evidence of impact on the team"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.code-review.s1",
+     "situation": "You are the senior on an ISA client team. A mid-level developer's PR for a law firm's document-access API is due for a demo tomorrow. It works, but the authorisation check is done in the Angular route guard only, not on the API.",
+     "question": "What do you do?",
+     "options": [
+      {
+       "text": "Block the PR with a clear comment explaining that guards are UX, not security, and pair with the developer for an hour to add the server-side check before the demo.",
+       "verdict": "best",
+       "why": "Missing server-side authorisation on legal documents is a real vulnerability. Pairing fixes it in time and teaches the principle."
+      },
+      {
+       "text": "Approve it for the demo and open a ticket to add API authorisation later.",
+       "verdict": "bad",
+       "why": "Anyone can call the API directly and bypass the guard. 'Later' fixes for access control on privileged documents routinely ship to production unfixed."
+      },
+      {
+       "text": "Fix it yourself directly in their branch tonight without comment.",
+       "verdict": "ok",
+       "why": "The vulnerability gets fixed, but the developer learns nothing and you become the bottleneck for every security issue."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.scrum",
+   "title": "Agile and Scrum in practice",
+   "tease": "The client wants a fixed scope, a fixed date and Scrum. Which one do you tell them they can't have?",
+   "primer": {
+    "problem": "Your CV lists sprint planning, stand-ups and retrospectives, and collaboration with PMs, designers and QA. A consultancy will ask whether you understand why those ceremonies exist and how you adapt them when a client's contract, deadline or team does not fit the textbook.",
+    "picture": "Scrum is a **feedback loop with a fixed heartbeat**, like a release pipeline that ships every sprint. **Planning** sets a Sprint Goal, the **Daily Scrum** adjusts the plan, the **Review** shows working software to stakeholders, and the **Retrospective** fixes the process itself. The **Definition of Done** is the quality gate an increment must pass, the same idea as a branch policy in Azure DevOps that blocks merges until checks pass.",
+    "terms": [
+     {
+      "term": "Sprint Goal",
+      "def": "The single objective for a sprint that gives the team flexibility in which backlog items deliver it."
+     },
+     {
+      "term": "Definition of Done",
+      "def": "The shared quality bar every increment must meet, such as tested, reviewed, documented and deployable."
+     },
+     {
+      "term": "Product Owner",
+      "def": "The person accountable for maximising product value and ordering the backlog; in consulting often a client representative."
+     },
+     {
+      "term": "Story points",
+      "def": "Relative size estimates for backlog items; a team-specific planning aid, not part of the Scrum Guide itself."
+     },
+     {
+      "term": "Velocity",
+      "def": "How much work a team typically completes per sprint, used for forecasting, never as a performance target."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "The 2020 Scrum Guide defines a **Sprint** of one month or less containing four events. **Sprint Planning** answers why this sprint is valuable (the Sprint Goal), what can be done, and how. The **Daily Scrum** is a 15-minute event for the Developers to inspect progress toward the goal and adapt the plan; it is not a status report to a manager. The **Sprint Review** shows the increment to stakeholders and adapts the backlog; it is a working session, not a gate. The **Retrospective** improves how the team works. Three commitments anchor the artefacts: the Product Goal, the Sprint Goal and the **Definition of Done**.\n\nEstimation is a means to forecast, not a contract. Story points and planning poker are common practice but not in the Guide. Velocity forecasts what fits; turning it into a target makes teams inflate points.\n\nWorking with others: involve designers before refinement so stories arrive with designs, and QA during the sprint, not after it, which is why 'tested' belongs in the Definition of Done. PMs or Product Owners own priority; engineers own how and how long.\n\nIn a **consulting engagement**, the textbook bends. Clients often sign fixed-price, fixed-scope contracts. The honest move is to make the trade-off visible: with a fixed date and budget, scope must flex, so agree on must-haves and show working software every sprint so the client steers early. Get a named client Product Owner with real authority; a proxy who must ask a committee stalls everything. For a law firm, add compliance and security checks to the Definition of Done. In interviews, describe what you actually did at Moveo, such as [how planning or retros ran], and one thing a retro changed.",
+    "source": {
+     "title": "The 2020 Scrum Guide",
+     "url": "https://scrumguides.org/scrum-guide.html"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.scrum.c1",
+     "type": "mc",
+     "prompt": "What is the purpose of the Daily Scrum according to the Scrum Guide?",
+     "options": [
+      "For Developers to inspect progress toward the Sprint Goal and adapt the plan",
+      "For the manager to collect status from each person",
+      "To estimate new backlog items",
+      "To demo work to stakeholders"
+     ],
+     "answer": 0,
+     "why": "It is the team's planning checkpoint, timeboxed to 15 minutes. Turning it into a status report to a manager is the most common anti-pattern and kills its usefulness."
+    },
+    {
+     "id": "cv.scrum.c2",
+     "type": "tf",
+     "prompt": "Story points and planning poker are mandatory parts of Scrum as defined in the Scrum Guide.",
+     "answer": false,
+     "why": "The Guide leaves sizing technique to the team. Points are a popular practice, which is why many people wrongly assume they are part of the framework."
+    },
+    {
+     "id": "cv.scrum.c3",
+     "type": "cloze",
+     "prompt": "The shared quality bar every increment must meet before it counts as complete is the Definition of ___.",
+     "answer": "Done",
+     "why": "Without it, 'done' means different things to developers, QA and the client. Putting tests, review and security checks in it prevents hidden work piling up."
+    },
+    {
+     "id": "cv.scrum.c4",
+     "type": "mc",
+     "prompt": "A client contract fixes scope, date and budget, and asks for Scrum. What is the most honest adaptation?",
+     "options": [
+      "Keep date and budget fixed, agree must-haves, let lower-priority scope flex, and demo every sprint so the client steers",
+      "Promise everything and add overtime near the deadline",
+      "Drop Scrum and use a strict waterfall plan",
+      "Refuse the engagement"
+     ],
+     "answer": 0,
+     "why": "You cannot fix all three and stay honest about uncertainty. Making scope the variable, with frequent demos, gives the client control instead of a late surprise."
+    },
+    {
+     "id": "cv.scrum.c5",
+     "type": "mc",
+     "prompt": "Management wants to raise team velocity by 20 percent next quarter. What is the likely result?",
+     "options": [
+      "Point inflation: estimates grow while delivered value stays the same",
+      "A real 20 percent productivity gain",
+      "More accurate forecasts",
+      "Shorter sprints"
+     ],
+     "answer": 0,
+     "why": "When a measure becomes a target, it stops being a good measure. Velocity is a forecasting tool for the team, not a productivity score."
+    },
+    {
+     "id": "cv.scrum.c6",
+     "type": "cloze",
+     "prompt": "In the 2020 Scrum Guide, a Sprint lasts one ___ or less.",
+     "answer": "month",
+     "why": "The upper bound keeps feedback loops short enough to limit risk. Most teams pick two weeks, but that is convention, not the rule."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.scrum.e1",
+     "prompt": "How did Scrum work on your team at Moveo, and how would you adapt it for a law-firm client at ISA?",
+     "seconds": 120,
+     "modelAnswer": "At Moveo we ran [sprint length] sprints with planning, daily stand-ups and retrospectives, working with PMs, designers and QA. What made it work was [e.g. designers joining refinement so stories arrived with designs, QA testing inside the sprint]. One retro change I am proud of is [example]. For me each ceremony has a job: planning sets a goal, the daily adapts the plan, the review gets real feedback on working software, and the retro fixes our process. At ISA the difference is the contract and the client. Law firms often want fixed scope and a date, so I would make the trade-off explicit early: date and budget fixed, must-haves agreed, the rest flexible, and a demo every sprint so they steer before it is expensive. I would ask for a named client Product Owner who can decide, because a proxy who must consult partners stalls everything. And I would put security, access control and audit requirements into the Definition of Done, because for a law firm 'done' includes 'safe with privileged documents'.",
+     "rubric": [
+      "Described real practice at Moveo with a concrete example",
+      "Explained each ceremony's purpose, not just names",
+      "Addressed fixed-scope contracts honestly (scope flexes)",
+      "Asked for an empowered client Product Owner",
+      "Added security and compliance to the Definition of Done"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.scrum.s1",
+     "situation": "Midway through an ISA engagement, the law firm's managing partner asks for a new privilege-log export feature 'in this sprint'. The sprint is half done, the Sprint Goal is the document-review queue, and QA has not started testing.",
+     "question": "What do you do?",
+     "options": [
+      {
+       "text": "Explain the impact on the Sprint Goal, offer to put the export at the top of the next sprint after the Product Owner prioritises it, and ask whether there is a real deadline that justifies renegotiating the current goal.",
+       "verdict": "best",
+       "why": "It respects the client's urgency while protecting the goal and quality, and routes priority through the Product Owner where it belongs."
+      },
+      {
+       "text": "Add it to the sprint and ask the team to work longer hours.",
+       "verdict": "bad",
+       "why": "It squeezes QA, risks both features shipping untested, and teaches the client that sprint plans mean nothing."
+      },
+      {
+       "text": "Refuse firmly because the Scrum Guide says the sprint cannot change.",
+       "verdict": "ok",
+       "why": "Protecting the goal is right, but quoting rules at a managing partner damages the relationship; the Guide also allows scope renegotiation with the Product Owner."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.testing-debugging",
+   "title": "Testing and debugging",
+   "tease": "A request fails in production once in 2,000 calls across three services. Where do you even start?",
+   "primer": {
+    "problem": "Your profile says you develop, test and debug high-performance OOP software. Interviewers will ask what you test at which level, how you keep tests fast but trustworthy, and how you find a bug that only appears in production across several microservices, where you cannot attach a debugger.",
+    "picture": "Tests are a **pyramid**: many fast unit tests on pure logic, fewer **integration tests** against real infrastructure such as SQL Server or PostgreSQL in a throwaway Docker container, and a handful of end-to-end tests. In production you debug like a detective following a parcel: every log line carries the same **correlation id** (a trace id) as the request travels through API, Kafka and worker, so one search in Elasticsearch reconstructs the whole journey.",
+    "sketch": "        /  E2E   \\        few, slow, brittle\n       / integration \\    real DB in Testcontainers\n      /   unit tests   \\  many, fast, pure logic\n\nAPI ──traceparent──▶ service B ──Kafka header──▶ worker\n log: trace=4bf9…    log: trace=4bf9…         log: trace=4bf9…",
+    "terms": [
+     {
+      "term": "Testcontainers",
+      "def": "A library that starts real dependencies such as databases in Docker containers for a test run and removes them afterwards."
+     },
+     {
+      "term": "Test double",
+      "def": "Any stand-in for a real dependency in a test: dummy, stub, spy, mock or fake."
+     },
+     {
+      "term": "Fake",
+      "def": "A test double with a working lightweight implementation, such as an in-memory repository."
+     },
+     {
+      "term": "Correlation id",
+      "def": "An identifier attached to a request and propagated to every downstream call and log line it causes."
+     },
+     {
+      "term": "traceparent",
+      "def": "The W3C Trace Context HTTP header carrying the trace id and parent span id between services."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "**Unit tests** check one unit of logic with dependencies replaced: in xUnit a `[Fact]` is one case, a `[Theory]` with `[InlineData]` runs the same test over many inputs. xUnit creates a new instance of the test class for every test, so state does not leak; expensive shared setup goes in a class fixture. Know the **test doubles** (Meszaros): a stub returns canned answers, a mock verifies interactions, a fake is a working simplified implementation, a spy records calls. Over-mocking couples tests to implementation, so prefer asserting on outcomes.\n\n**Integration tests** check that your code works with real infrastructure. Microsoft advises against the EF Core in-memory provider for this because it does not behave like a relational database: no real SQL, transactions or constraints. Use **Testcontainers** to run the real engine in Docker, and `WebApplicationFactory` to host the API in-process.\n\n**Debugging production** is different: no breakpoints, intermittent failures, many services. Use **structured logs** (fields, not just strings), **distributed traces** and **metrics**. In .NET, `Activity` and OpenTelemetry propagate the W3C `traceparent` header automatically over HttpClient; for Kafka, put the trace context into message headers so consumers continue the same trace. Then a single trace id in Elasticsearch or your APM shows the whole path. The method: reproduce or narrow by time and tenant, form a hypothesis, find the failing span, then write a failing test that reproduces it before fixing, so the bug cannot return silently.",
+    "snippet": "public class PayrollRepositoryTests : IAsyncLifetime\n{\n    private readonly PostgreSqlContainer _db = new PostgreSqlBuilder()\n        .WithImage(\"postgres:16-alpine\").Build();\n\n    public async ValueTask InitializeAsync() => await _db.StartAsync();\n    public ValueTask DisposeAsync() => _db.DisposeAsync();\n\n    [Theory]\n    [InlineData(0)]\n    [InlineData(31)]\n    public async Task Rejects_invalid_working_days(int days)\n    {\n        await using var ctx = TestDb.Create(_db.GetConnectionString());\n        var repo = new PayrollRepository(ctx);\n        await Assert.ThrowsAsync<DbUpdateException>(\n            () => repo.SaveAsync(Payslip.WithDays(days)));\n    }\n}",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "Testcontainers for .NET",
+     "url": "https://dotnet.testcontainers.org/"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.testing-debugging.c1",
+     "type": "mc",
+     "prompt": "Why does Microsoft discourage the EF Core in-memory provider for integration tests?",
+     "options": [
+      "It is not a relational database, so constraints, transactions and real SQL behaviour are missing",
+      "It is too slow compared to SQL Server",
+      "It was removed from EF Core",
+      "It cannot store more than 1,000 rows"
+     ],
+     "answer": 0,
+     "why": "Tests can pass in-memory and fail against the real engine, the opposite of what integration tests are for. Speed is not the problem; fidelity is, hence Testcontainers."
+    },
+    {
+     "id": "cv.testing-debugging.c2",
+     "type": "tf",
+     "prompt": "xUnit creates a new instance of the test class for each test method.",
+     "answer": true,
+     "why": "This isolates tests from each other's state. Shared expensive setup, such as a database container, goes into a class or collection fixture instead."
+    },
+    {
+     "id": "cv.testing-debugging.c3",
+     "type": "mc",
+     "prompt": "Which test double is a working, simplified implementation, such as an in-memory repository?",
+     "options": [
+      "Fake",
+      "Mock",
+      "Stub",
+      "Dummy"
+     ],
+     "answer": 0,
+     "why": "A fake actually works, just not production-grade. A mock is the tempting answer because people use the word for every double, but strictly a mock verifies interactions."
+    },
+    {
+     "id": "cv.testing-debugging.c4",
+     "type": "cloze",
+     "prompt": "The W3C Trace Context HTTP header that carries the trace id between services is called ___.",
+     "answer": "traceparent",
+     "why": ".NET's HttpClient and OpenTelemetry propagate it automatically. For Kafka you copy trace context into message headers so the consumer continues the same trace."
+    },
+    {
+     "id": "cv.testing-debugging.c5",
+     "type": "mc",
+     "prompt": "A bug appears in production once in roughly 2,000 requests. After finding the cause in traces, what should you do before fixing it?",
+     "options": [
+      "Write a test that reproduces the failure, so the fix is proven and the bug cannot silently return",
+      "Add more logging and wait for it to happen again",
+      "Restart the affected service to clear the state",
+      "Deploy the fix directly since the cause is known"
+     ],
+     "answer": 0,
+     "why": "A failing test turns a hypothesis into proof and guards against regression. Shipping a fix without one is tempting when you are confident, but intermittent bugs often have a second cause."
+    },
+    {
+     "id": "cv.testing-debugging.c6",
+     "type": "tf",
+     "prompt": "Asserting that every internal method was called in a specific order makes unit tests more robust to refactoring.",
+     "answer": false,
+     "why": "Interaction-heavy assertions couple tests to implementation, so refactors break tests without breaking behaviour. Prefer asserting on outcomes and state."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.testing-debugging.e1",
+     "prompt": "How do you debug an intermittent error in production that spans several microservices?",
+     "seconds": 120,
+     "modelAnswer": "First I narrow the problem: when did it start, which endpoint, which tenants, what share of requests, and did anything deploy around then. Then I use telemetry rather than guesses. Every request gets a trace id that propagates through HTTP via the W3C traceparent header, which .NET and OpenTelemetry handle automatically, and through Kafka via message headers, so every structured log line and span shares it. I pick a failing request, follow its trace across services in the APM or in Elasticsearch, and find the span where it fails or where latency jumps. Typical culprits in our kind of stack are timeouts and retries amplifying load, a race in a consumer that is not idempotent, or data that only some tenants have. Once I have a hypothesis, I reproduce it, ideally as a failing integration test with Testcontainers against the real database, and only then fix it. Afterwards I add an alert or metric so we would see it earlier next time. In my own work, [one example of an issue you traced this way].",
+     "rubric": [
+      "Narrowed scope first: time, endpoint, tenants, deploys",
+      "Used correlation or trace ids across HTTP and Kafka",
+      "Located the failing span instead of guessing",
+      "Reproduced with a failing test before fixing",
+      "Added monitoring to catch recurrence",
+      "Gave a real example or filled the placeholder"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.testing-debugging.s1",
+     "situation": "A law-firm client reports that some document uploads 'disappear' in the system ISA runs for them. Uploads go through an API, onto a Kafka topic, then to an indexing worker. Logs exist in each service but no correlation id is propagated.",
+     "question": "What do you do?",
+     "options": [
+      {
+       "text": "Short term, match logs by document id and timestamp to find where uploads drop; then add trace propagation through HTTP and Kafka headers so the next incident is one search away.",
+       "verdict": "best",
+       "why": "It resolves the current incident with the data you have and fixes the observability gap that made it hard."
+      },
+      {
+       "text": "Add retries on the worker so failed indexing eventually succeeds.",
+       "verdict": "bad",
+       "why": "It guesses at a cause. If messages are lost before the worker or fail permanently, retries change nothing, and non-idempotent retries can create duplicates."
+      },
+      {
+       "text": "Add correlation ids everywhere first, deploy, then wait for the next missing upload.",
+       "verdict": "ok",
+       "why": "Right long-term fix, but it leaves the client's current missing documents uninvestigated, which for a law firm may matter legally."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "boss": {
+  "questions": [
+   {
+    "id": "cv.boss.senior-1",
+    "prompt": "Walk me through your CV and tell me why this role.",
+    "seconds": 180,
+    "modelOutline": "Open with one line of identity: a software engineer who moved from building features to owning systems. Past: InterAdria 2022-24, .NET, Angular and SQL Server for government and private clients; lesson learned, shipping for demanding clients and serious SQL. Present: Moveo since 2024, microservices with .NET, Kafka, PostgreSQL and AWS; headline is taking over the company ERP after a management change, about 50 daily users across HR, payroll and tenders; mentoring and code reviews; agentic AI workflows and MCP servers for development tasks with [your result]. Address seniority as scope of ownership. Close on fit: ISA builds agents and RAG on AWS for law firms where security and correctness decide everything, and you already build agent tooling and own sensitive data. Stay under two minutes, leave a hook.",
+    "rubric": [
+     "Clear past-present-future arc, not a list of tools",
+     "InterAdria lesson stated in one sentence",
+     "ERP ownership named as main seniority evidence",
+     "MCP and agentic AI work mentioned with a concrete result",
+     "Seniority framed as scope, not years",
+     "Why ISA tied to agents, AWS, security and law-firm clients",
+     "Delivered within two minutes, calm and confident"
+    ]
+   },
+   {
+    "id": "cv.boss.senior-2",
+    "prompt": "Tell me about the MCP server you are proudest of: the architecture, the security, and what it saved.",
+    "seconds": 180,
+    "modelOutline": "Name the server and the single development task it automates, who uses it, and [what it saved, as a number]. Architecture: official SDK (C# ModelContextProtocol or Python mcp), the tools exposed with narrow input schemas and model-oriented descriptions, resources for read-only context, transport choice (stdio locally with logs on stderr, Streamable HTTP for shared use). Security: least-privilege downstream credentials, no token passthrough, OAuth resource-server model for remote use with audience-bound tokens, human confirmation for destructive tools, argument validation, logging of every call with a correlation id, awareness of tool poisoning when mixing third-party servers. Close with what you learned and what you would change, such as moving to the stateless 2026-07-28 revision or adding evals for tool selection.",
+    "rubric": [
+     "Concrete purpose, users and saving with a number",
+     "Named SDK and transport correctly",
+     "Explained tool design: narrow schemas, descriptions for the model",
+     "Least privilege and no token passthrough",
+     "OAuth resource-server model for remote servers",
+     "Human confirmation and audit logging of tool calls",
+     "Mentioned tool poisoning or prompt injection risk",
+     "Honest lesson or next improvement"
+    ]
+   },
+   {
+    "id": "cv.boss.senior-3",
+    "prompt": "How do you keep AI-generated code correct?",
+    "seconds": 180,
+    "modelOutline": "Frame AI output as a fast but unproven contributor's pull request: same gates as everyone, plus more. Deterministic first: it must build, existing tests pass, new behaviour comes with tests, ideally reviewed before the implementation; analyzers and linters run in CI. Keep diffs small so human review is real, and review for typical model errors: invented APIs, missed edge cases, swallowed exceptions, unvalidated input. For agentic workflows, least privilege: the agent opens PRs and never pushes to main, and every step is logged. When prompts, models or tools change, rerun a golden set of known tasks as an eval to catch regressions. Back it with evidence: [your metric, e.g. agent PR acceptance or rework rate] and one bug the gates caught. End with the principle: AI drafts, tests and review decide.",
+    "rubric": [
+     "Treats AI output as untrusted contributor code",
+     "Build, tests and analyzers as first gate",
+     "Tests written or reviewed before trusting implementation",
+     "Small diffs and targeted human review",
+     "Least privilege for agents: PRs, not pushes",
+     "Evals or golden set when prompt or model changes",
+     "Concrete evidence: metric or caught bug"
+    ]
+   }
+  ]
+ }
+}

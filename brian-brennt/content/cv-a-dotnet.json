@@ -1,0 +1,1100 @@
+{
+ "tier": {
+  "id": "cv",
+  "name": "Your CV, line by line",
+  "level": 2,
+  "tease": "You wrote 'Kafka' on your CV. The interviewer asks how consumer groups rebalance. Go."
+ },
+ "nodes": [
+  {
+   "id": "cv.dotnet-framework-vs-core",
+   "title": ".NET Framework vs modern .NET",
+   "tease": "Your CV says both .NET Framework and .NET Core. Which is frozen, and which LTS dies in 3 weeks?",
+   "primer": {
+    "problem": "Your CV lists both .NET Framework and .NET Core. An interviewer will test whether you know they are different runtimes, why teams migrate, what breaks on the way, and which modern version a new service should target today. Getting the version wrong signals you stopped paying attention.",
+    "picture": "Think of **.NET Framework** as a component of Windows: one machine-wide install, IIS hosting through `System.Web`, frozen at 4.8.1 and receiving only fixes. **Modern .NET** (the line that started as .NET Core, renamed .NET 5 in 2020) is a portable app runtime: it ships with your app or in a Linux container, hosts itself on **Kestrel**, and gets a new major version every November. Even numbers are **LTS**, odd numbers are **STS**.",
+    "sketch": ".NET Framework 1.0 ... 4.8 -> 4.8.1   (Windows only, fixes only)\n.NET Core 1.0 ... 3.1 -> .NET 5 -> 6 LTS -> 7 -> 8 LTS -> 9 -> 10 LTS (Nov 2025)\n                               cross-platform, yearly in November\nOct 2026: .NET 8 and 9 end 10 Nov 2026; .NET 10 supported to Nov 2028",
+    "terms": [
+     {
+      "term": "LTS",
+      "def": "Long Term Support: an even-numbered .NET release that Microsoft patches for three years after its November launch."
+     },
+     {
+      "term": "STS",
+      "def": "Standard Term Support: an odd-numbered release, patched for 24 months since the policy change that started with .NET 9."
+     },
+     {
+      "term": "Kestrel",
+      "def": "The cross-platform web server built into ASP.NET Core, so an app can serve HTTP without IIS in front."
+     },
+     {
+      "term": "System.Web",
+      "def": "The IIS-bound assembly behind classic ASP.NET and Web Forms; it does not exist in modern .NET."
+     },
+     {
+      "term": "Self-contained deployment",
+      "def": "Publishing an app together with its own copy of the .NET runtime, so the server needs nothing preinstalled."
+     },
+     {
+      "term": "Strangler fig",
+      "def": "Migrating gradually by routing some requests to a new app and the rest to the old one until the old one is empty."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "**.NET Framework** is Windows-only and installed once per machine, so every app on a server shares one runtime version. Its final version is 4.8.1; Microsoft still ships security fixes because it is a Windows component, but there are no new features. Classic ASP.NET MVC, Web Forms and WCF services live here, bound to IIS through `System.Web`.\n\n**Modern .NET** began as .NET Core and dropped the \"Core\" at .NET 5. It is cross-platform, open source, installs side by side (two apps on one box can use different versions), can be published **self-contained**, and runs happily in a Linux Docker image, which is what made the Moveo microservices on AWS practical. ASP.NET Core is a rewrite: one pipeline of middleware, built-in dependency injection, configuration from JSON and environment variables, and the Kestrel server.\n\nRelease rhythm: a major version every November; even numbers are LTS (three years), odd numbers STS (now 24 months). As of October 2026 the answer for a new service is **.NET 10 LTS**, released November 2025 and supported to November 2028. .NET 8 (LTS) and .NET 9 (STS) both reach end of support on **10 November 2026**, so any service still on them needs a plan this month. .NET 11, an STS release, is due in November 2026.\n\nWhy teams migrate: Linux containers and cheaper hosting, much better throughput, modern C#, and the fact that new libraries target modern .NET. What hurts: Web Forms has no port, WCF server needs CoreWCF or a move to gRPC/REST, AppDomains and Remoting are gone, and `System.Web`-coupled code must be rewritten. For big apps, migrate incrementally: put YARP in front, move routes one at a time (strangler fig), and share session or auth through the System.Web adapters.",
+    "snippet": "<!-- Old: .NET Framework project, Windows + IIS -->\n<TargetFrameworkVersion>v4.8</TargetFrameworkVersion>\n\n<!-- New: SDK-style project, any OS, Kestrel -->\n<Project Sdk=\"Microsoft.NET.Sdk.Web\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <Nullable>enable</Nullable>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n</Project>\n\n# publish a self-contained Linux build for a container\ndotnet publish -c Release -r linux-x64 --self-contained",
+    "snippetLang": "text",
+    "source": {
+     "title": ".NET and .NET Core official support policy",
+     "url": "https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.dotnet-framework-vs-core.c1",
+     "type": "mc",
+     "prompt": "It is October 2026 and you are starting a new ASP.NET Core service that must run for years. Which target is right?",
+     "options": [
+      ".NET 10 (LTS)",
+      ".NET 8 (LTS)",
+      ".NET 9 (STS)",
+      ".NET Framework 4.8.1"
+     ],
+     "answer": 0,
+     "why": ".NET 10 is the current LTS, supported to November 2028. .NET 8 looks safe because it is LTS, but it reaches end of support on 10 November 2026, the same day as .NET 9."
+    },
+    {
+     "id": "cv.dotnet-framework-vs-core.c2",
+     "type": "tf",
+     "prompt": ".NET Framework 4.8.1 is out of support and no longer receives security fixes.",
+     "answer": false,
+     "why": "It is still supported as a component of the Windows versions it ships with and gets security and reliability fixes. It simply gets no new features, which is why new work goes to modern .NET."
+    },
+    {
+     "id": "cv.dotnet-framework-vs-core.c3",
+     "type": "mc",
+     "prompt": "Which piece of a classic ASP.NET app has no direct equivalent in modern .NET and must be rewritten rather than ported?",
+     "options": [
+      "Web Forms pages bound to System.Web",
+      "Entity Framework 6 data access",
+      "Code that uses LINQ",
+      "NuGet package references"
+     ],
+     "answer": 0,
+     "why": "Web Forms depends on System.Web and IIS and was never ported. EF6 actually runs on modern .NET, so it is a tempting but wrong pick; teams usually move to EF Core later for performance."
+    },
+    {
+     "id": "cv.dotnet-framework-vs-core.c4",
+     "type": "mc",
+     "prompt": "What does side-by-side installation in modern .NET give you that .NET Framework did not?",
+     "options": [
+      "Two apps on one server can run different runtime versions independently",
+      "Apps can share one in-memory process with IIS",
+      "Automatic upgrade of every app to the newest runtime",
+      "Running Windows-only APIs on Linux"
+     ],
+     "answer": 0,
+     "why": "Framework is one machine-wide install, so upgrading it affects every app. Modern .NET runtimes coexist, and self-contained publishing removes the shared dependency entirely."
+    },
+    {
+     "id": "cv.dotnet-framework-vs-core.c5",
+     "type": "cloze",
+     "prompt": "Since the support-policy change that began with .NET 9, STS releases are supported for ___ months.",
+     "answer": "24",
+     "why": "Microsoft extended STS from 18 to 24 months, so .NET 9 ends together with .NET 8 on 10 November 2026. LTS stays at 36 months."
+    },
+    {
+     "id": "cv.dotnet-framework-vs-core.c6",
+     "type": "tf",
+     "prompt": "A large .NET Framework MVC app can be migrated route by route while both apps run in production behind a YARP proxy.",
+     "answer": true,
+     "why": "This is the strangler-fig approach Microsoft documents for incremental ASP.NET migration: YARP forwards unmigrated routes to the old app, and System.Web adapters help share session and auth."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.dotnet-framework-vs-core.e1",
+     "prompt": "Your CV lists both .NET Framework and .NET Core. What is the actual difference, and why would you migrate a Framework app?",
+     "seconds": 120,
+     "modelAnswer": "They are two different runtimes. .NET Framework is Windows-only, installed once per machine, hosted in IIS through System.Web, and frozen at 4.8.1: it still gets security fixes as part of Windows, but no new features. Modern .NET, which started as .NET Core and dropped the name at .NET 5, is cross-platform, open source, installs side by side, can be published self-contained and runs in Linux containers on Kestrel. ASP.NET Core is a rewrite with one middleware pipeline and built-in dependency injection.\n\nI would migrate for Linux containers and cheaper hosting, much better performance, current C# and libraries, and to get off a platform that will never get new capabilities. The costs are real: Web Forms has no port, WCF servers need CoreWCF or a move to gRPC, and System.Web code needs rewriting. For a big app I would not do a big bang; I would put YARP in front and move routes one at a time. Today I would target .NET 10, the LTS supported to November 2028, since .NET 8 and 9 both end on 10 November 2026.",
+     "rubric": [
+      "Framework is Windows-only, machine-wide, IIS/System.Web, feature-frozen at 4.8.1 but still patched",
+      "Modern .NET is cross-platform, side by side, self-contained, container friendly, Kestrel",
+      "Gives concrete migration reasons (containers, performance, ecosystem)",
+      "Names concrete blockers (Web Forms, WCF server, System.Web)",
+      "Incremental migration with YARP or strangler fig rather than a rewrite",
+      "Names .NET 10 LTS as the current target and the November 2026 end of .NET 8/9"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.dotnet-framework-vs-core.s1",
+     "situation": "A client runs a .NET Framework 4.8 MVC portal for a government agency on Windows servers. It works, but they want to containerise everything on AWS within a year. The app has 300 controllers, uses System.Web session heavily, and two WCF services.",
+     "question": "What do you propose?",
+     "options": [
+      {
+       "text": "Stand up a .NET 10 ASP.NET Core app behind YARP, migrate routes incrementally starting with low-risk ones, share session via System.Web adapters, and replace the WCF services with REST or gRPC.",
+       "verdict": "best",
+       "why": "Delivers value continuously, keeps the portal working, and lands on the supported LTS. Each migrated slice can ship to a Linux container on its own."
+      },
+      {
+       "text": "Rewrite the whole portal in ASP.NET Core in a separate branch and switch over at the end of the year.",
+       "verdict": "bad",
+       "why": "A big-bang rewrite of 300 controllers carries the classic risk of never catching up with ongoing changes and a high-stakes cutover for a government client."
+      },
+      {
+       "text": "Containerise the existing app with Windows Server containers first, then plan a migration.",
+       "verdict": "ok",
+       "why": "Windows containers on AWS work and buy time, but they are heavy and costly and leave the app on a feature-frozen runtime. Reasonable as a stopgap, not as the plan."
+      },
+      {
+       "text": "Target .NET 8 because it is LTS and the team knows it.",
+       "verdict": "bad",
+       "why": ".NET 8 reaches end of support on 10 November 2026, so a new migration should target .NET 10."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.aspnetcore-pipeline",
+   "title": "ASP.NET Core pipeline and DI",
+   "tease": "A singleton quietly holds a DbContext. Everything works, until two users hit it at once.",
+   "primer": {
+    "problem": "Every ASP.NET Core request flows through a pipeline you configure, and every service it uses comes from a container with a lifetime you choose. Get the order or the lifetime wrong and you get auth that silently does not run, or one user seeing another user's data under load.",
+    "picture": "Picture the pipeline as **Angular HTTP interceptors** in reverse: each **middleware** can act on the request, call `next`, then act on the response on the way out. Order in `Program.cs` is execution order. The DI container is a factory with three shelves: **singleton** (one for the app), **scoped** (one per request), **transient** (new every time). A longer-lived service must never hold a shorter-lived one.",
+    "sketch": "request -> ExceptionHandler -> HTTPS -> Static -> Routing -> AuthN -> AuthZ -> Endpoint\nresponse <-     (each middleware sees the response on the way back)    <-\n\nSingleton  [one per app]  --must not hold-->  Scoped [one per request]",
+    "terms": [
+     {
+      "term": "Middleware",
+      "def": "A component in the request pipeline that receives the HttpContext, may call the next component, and may short-circuit."
+     },
+     {
+      "term": "Scoped lifetime",
+      "def": "One service instance per request scope; in web apps, per HTTP request. DbContext is registered this way."
+     },
+     {
+      "term": "Captive dependency",
+      "def": "A bug where a longer-lived service keeps a shorter-lived one alive, for example a singleton holding a scoped DbContext."
+     },
+     {
+      "term": "PageModel",
+      "def": "The class behind a Razor Page, holding its handler methods such as OnGet and OnPost and its bound properties."
+     },
+     {
+      "term": "Endpoint",
+      "def": "The final handler that routing selected for a request: a controller action, Razor Page, minimal API or hub."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "`Program.cs` builds the pipeline. Each `app.Use...` adds middleware that runs in registration order on the way in and reverse order on the way out. Order matters: the exception handler goes first so it can catch everything, `UseRouting` must come before `UseAuthentication` and `UseAuthorization` so they know which endpoint and policy apply, and auth must precede the endpoints. Static files usually short-circuit early so images never hit auth. Writing your own is a class with `InvokeAsync(HttpContext, RequestDelegate next)`, or an inline `app.Use` lambda. FastAPI has the same idea with `@app.middleware(\"http\")`.\n\nDI is built in. **Singleton**: one instance for the app lifetime, must be thread-safe (caches, `HttpClient` handlers via `IHttpClientFactory`, configuration). **Scoped**: one per request, the default for `DbContext`, unit-of-work and anything holding per-user state. **Transient**: new on every resolve, for light stateless helpers. The classic bug is a **captive dependency**: a singleton that takes a scoped `DbContext` in its constructor keeps one context forever, shared across concurrent requests, which is not thread-safe and leaks stale tracked entities. In Development the default provider validates scopes and throws at startup. In a `BackgroundService` (a singleton), inject `IServiceScopeFactory` and create a scope per unit of work.\n\n**Razor Pages vs MVC**: both sit on the same routing, model binding, filters and Razor views. MVC groups actions by controller, which suits APIs and apps with many actions over one resource. Razor Pages groups by page: a `.cshtml` with `@page` plus a PageModel with `OnGet` and `OnPost` handlers, which keeps form-heavy, page-centric apps (like admin screens for an institution) cohesive. You can mix both in one app.",
+    "snippet": "var builder = WebApplication.CreateBuilder(args);\nbuilder.Services.AddDbContext<AppDb>(o => o.UseSqlServer(cs)); // scoped\nbuilder.Services.AddSingleton<IRateCache, RateCache>();\nbuilder.Services.AddScoped<IInvoiceService, InvoiceService>();\nbuilder.Services.AddRazorPages();\n\nvar app = builder.Build();\napp.UseExceptionHandler(\"/Error\");\napp.UseHttpsRedirection();\napp.UseStaticFiles();\napp.UseRouting();\napp.UseAuthentication();\napp.UseAuthorization();\napp.MapRazorPages();\napp.Run();\n\n// BUG: captive dependency\npublic class RateCache(AppDb db) : IRateCache { } // singleton holds scoped DbContext",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "Dependency injection in ASP.NET Core",
+     "url": "https://learn.microsoft.com/en-us/aspnet/core/fundamentals/dependency-injection"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.aspnetcore-pipeline.c1",
+     "type": "mc",
+     "prompt": "A singleton service takes AppDbContext (registered scoped) in its constructor. What is the real risk in production?",
+     "options": [
+      "One DbContext instance is shared across concurrent requests, which is not thread-safe and keeps stale tracked entities",
+      "A new DbContext is created per call, exhausting the connection pool",
+      "The DbContext is disposed after the first request, so later calls throw immediately",
+      "Nothing; the container upgrades the DbContext to a singleton safely"
+     ],
+     "answer": 0,
+     "why": "The singleton captures one context for the app lifetime. Disposal-per-request does not happen because the scope that would dispose it is the root scope; concurrency exceptions and stale data appear instead."
+    },
+    {
+     "id": "cv.aspnetcore-pipeline.c2",
+     "type": "mc",
+     "prompt": "Why must UseAuthorization come after UseRouting?",
+     "options": [
+      "Authorization needs the selected endpoint to read its [Authorize] policy metadata",
+      "Routing encrypts the auth cookie",
+      "Authorization must run after the response is written",
+      "Routing populates the user identity from the JWT"
+     ],
+     "answer": 0,
+     "why": "Authorization middleware inspects the endpoint routing chose. Populating the identity is the job of UseAuthentication, not routing, which is the tempting wrong pick."
+    },
+    {
+     "id": "cv.aspnetcore-pipeline.c3",
+     "type": "tf",
+     "prompt": "In the Development environment, the default ASP.NET Core service provider throws when a singleton consumes a scoped service.",
+     "answer": true,
+     "why": "Scope validation is on in Development, so a captive dependency fails fast at startup or resolve. It is off in Production by default, which is why the bug can slip through if nobody runs it locally."
+    },
+    {
+     "id": "cv.aspnetcore-pipeline.c4",
+     "type": "mc",
+     "prompt": "Which lifetime fits a DbContext in a web app?",
+     "options": [
+      "Scoped",
+      "Singleton",
+      "Transient",
+      "Thread-static"
+     ],
+     "answer": 0,
+     "why": "AddDbContext registers it scoped: one unit of work per request, disposed at request end. Transient would give different instances to services in the same request, breaking a shared transaction."
+    },
+    {
+     "id": "cv.aspnetcore-pipeline.c5",
+     "type": "cloze",
+     "prompt": "In a Razor Page, the method that handles a form POST on the PageModel is named ___ by convention.",
+     "answer": "OnPost",
+     "why": "Razor Pages maps HTTP verbs to handlers by name: OnGet, OnPost, OnPostAsync, or named handlers like OnPostDelete. MVC instead routes to controller actions."
+    },
+    {
+     "id": "cv.aspnetcore-pipeline.c6",
+     "type": "cloze",
+     "prompt": "A BackgroundService that needs a DbContext should inject ___ and create a scope per unit of work.",
+     "answer": "IServiceScopeFactory",
+     "why": "Hosted services are singletons, so injecting a scoped DbContext directly is a captive dependency. Creating a scope per job iteration gives a fresh context each time."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.aspnetcore-pipeline.e1",
+     "prompt": "Explain the three DI lifetimes in ASP.NET Core and the bug you get when you mix them wrongly.",
+     "seconds": 120,
+     "modelAnswer": "Singleton means one instance for the whole application lifetime, so it must be thread-safe; I use it for caches, configuration and things like the HttpClient factory. Scoped means one instance per scope, which in a web app is per HTTP request; DbContext is registered scoped so every service in one request shares the same unit of work and it is disposed at the end. Transient means a new instance every time it is resolved, good for small stateless helpers.\n\nThe bug is the captive dependency: a longer-lived service holding a shorter-lived one. The classic case is a singleton taking a DbContext in its constructor. That one context then lives forever and gets shared across concurrent requests. DbContext is not thread-safe, so you get concurrency exceptions, plus stale tracked entities and growing memory. In Development the container validates scopes and throws, but that check is off in Production by default. The fix is to make the consumer scoped, or, in a background service, inject IServiceScopeFactory and create a scope per unit of work. FastAPI's Depends with a yield-based session gives the same per-request scoping.",
+     "rubric": [
+      "Defines singleton, scoped, transient correctly with an example each",
+      "DbContext is scoped: per-request unit of work",
+      "Names the captive dependency: longer lifetime holding shorter",
+      "Explains the consequence: shared non-thread-safe context, stale data",
+      "Mentions scope validation in Development",
+      "Fix: scoped consumer or IServiceScopeFactory in hosted services"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.aspnetcore-pipeline.s1",
+     "situation": "After a release, users of an internal HR system occasionally see another employee's draft data, and logs show sporadic \"A second operation was started on this context\" errors. The change added a singleton UserPreferencesCache that injects the app DbContext.",
+     "question": "What do you do?",
+     "options": [
+      {
+       "text": "Make the cache stop holding the DbContext: keep it singleton but inject IServiceScopeFactory and open a scope per load, or make it scoped if it holds per-user data; add a test that builds the provider with ValidateScopes on.",
+       "verdict": "best",
+       "why": "Fixes the captive dependency at the root and adds a guard so the same bug fails at startup next time."
+      },
+      {
+       "text": "Wrap every DbContext call in the cache with a lock.",
+       "verdict": "bad",
+       "why": "Serialises the whole app through one context and still leaks tracked entities across users. It hides the data-leak symptom without fixing the lifetime bug."
+      },
+      {
+       "text": "Change the DbContext registration to singleton so lifetimes match.",
+       "verdict": "bad",
+       "why": "Makes the problem universal: one non-thread-safe context for every request."
+      },
+      {
+       "text": "Change the cache registration to transient.",
+       "verdict": "ok",
+       "why": "Removes the capture, but a transient cache caches nothing useful. It stops the leak while defeating the feature."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.clean-architecture",
+   "title": "Monolith vs MVC vs Clean Arch",
+   "tease": "MVC and monolith are not alternatives. If you say they are, the interview just changed direction.",
+   "primer": {
+    "problem": "Your CV says you used monolithic, MVC and Clean Architecture approaches, and microservices built on Clean Architecture at Moveo. Interviewers probe whether you know these answer different questions, and whether you can justify the extra layers instead of reciting them.",
+    "picture": "Three different axes. **Monolith** vs **microservices** is about deployment: one deployable or many. **MVC** is a presentation pattern: how a request reaches a controller and a view. **Clean Architecture** is about dependency direction inside a codebase: the **domain** sits in the middle and knows nothing about SQL Server, EF or HTTP; outer layers depend inward. A single monolith can use MVC and be cleanly layered at the same time.",
+    "sketch": "   +-------------------------------+\n   | API / UI (controllers, pages) |\n   |  +-------------------------+  |\n   |  | Infrastructure (EF, S3)  |  |   arrows point inward only\n   |  |  +-------------------+  |  |\n   |  |  | Application (use  |  |  |\n   |  |  | cases, ports)     |  |  |\n   |  |  |  [ Domain ]       |  |  |\n   +--+--+-------------------+--+--+",
+    "terms": [
+     {
+      "term": "Dependency rule",
+      "def": "Source-code dependencies only point inward; inner layers never reference outer ones such as EF or ASP.NET."
+     },
+     {
+      "term": "Port",
+      "def": "An interface defined by the application core, such as IInvoiceRepository, that the outside world must implement."
+     },
+     {
+      "term": "Adapter",
+      "def": "An outer-layer class that implements a port with real technology, such as an EF Core repository or S3 client."
+     },
+     {
+      "term": "Composition root",
+      "def": "The one place, Program.cs, where interfaces are wired to concrete implementations through dependency injection."
+     },
+     {
+      "term": "Modular monolith",
+      "def": "One deployable split into strongly bounded modules that talk through explicit interfaces, ready to extract later."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "Separate the questions. **Monolith vs microservices** is deployment: one process and one release, or many services each owning its data. **MVC** is a UI pattern: controllers receive requests, models carry data, views render. **Clean Architecture** (and its cousins hexagonal and onion) is about which code may reference which.\n\nThe **dependency rule**: dependencies point inward. The **Domain** project holds entities and business rules with no framework references. **Application** holds use cases and defines **ports**, interfaces like `IInvoiceRepository` or `IEmailSender`. **Infrastructure** implements them with EF Core, SQL Server, Kafka or S3. **API/UI** is a thin shell that calls use cases. `Program.cs` is the composition root wiring adapters to ports. The payoff: business rules test without a database, and swapping SQL Server for PostgreSQL or adding a Kafka publisher touches one adapter.\n\nThe cost is real: more projects, more mapping between DTOs and entities, more indirection for simple CRUD. So: a small internal tool with a few forms is fine as a plain MVC or Razor Pages monolith with EF in the controllers. A long-lived system with rich rules (payroll calculations, tender workflows) earns Clean Architecture. Microservices earn their operational cost only when teams or scaling needs genuinely diverge; otherwise a **modular monolith** gets most of the benefit.\n\nAt Moveo each microservice was internally clean: that combination means every service has its own domain core, while Kafka and HTTP clients are just adapters. The same shape carries to the target role: an agent's tools are ports, and Bedrock, OpenSearch or a document store are adapters, so a FastAPI service can be tested with fake tools.",
+    "snippet": "// Application layer: defines the port, no EF reference\npublic interface IInvoiceRepository {\n    Task<Invoice?> GetAsync(Guid id, CancellationToken ct);\n    Task AddAsync(Invoice invoice, CancellationToken ct);\n}\npublic class ApproveInvoice(IInvoiceRepository repo, IClock clock) {\n    public async Task Handle(Guid id, CancellationToken ct) {\n        var inv = await repo.GetAsync(id, ct) ?? throw new NotFoundException(id);\n        inv.Approve(clock.UtcNow);          // rule lives in the domain\n    }\n}\n// Infrastructure layer: the adapter\npublic class EfInvoiceRepository(AppDb db) : IInvoiceRepository { /* EF Core */ }\n// Program.cs: composition root\nbuilder.Services.AddScoped<IInvoiceRepository, EfInvoiceRepository>();",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "Common web application architectures (.NET architecture guide)",
+     "url": "https://learn.microsoft.com/en-us/dotnet/architecture/modern-web-apps-azure/common-web-application-architectures"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.clean-architecture.c1",
+     "type": "mc",
+     "prompt": "In Clean Architecture, which project may reference Microsoft.EntityFrameworkCore?",
+     "options": [
+      "Infrastructure",
+      "Domain",
+      "Application",
+      "All of them, as long as only Infrastructure calls SaveChanges"
+     ],
+     "answer": 0,
+     "why": "EF is a detail, so only the outer Infrastructure layer references it. Letting Application reference EF \"just for IQueryable\" is a common shortcut that breaks the dependency rule."
+    },
+    {
+     "id": "cv.clean-architecture.c2",
+     "type": "tf",
+     "prompt": "An application can be a monolith and use MVC and follow Clean Architecture, all at once.",
+     "answer": true,
+     "why": "They answer different questions: deployment shape, presentation pattern, dependency direction. Treating them as three alternatives is a red flag in interviews."
+    },
+    {
+     "id": "cv.clean-architecture.c3",
+     "type": "mc",
+     "prompt": "Where is the interface IInvoiceRepository defined in Clean Architecture?",
+     "options": [
+      "In the Application (or Domain) core, implemented by Infrastructure",
+      "In Infrastructure, next to its EF implementation",
+      "In the API project",
+      "In a shared Contracts project referenced by every layer"
+     ],
+     "answer": 0,
+     "why": "The core owns the port so that the dependency arrow points inward. Putting the interface in Infrastructure forces the core to reference Infrastructure, which inverts the rule."
+    },
+    {
+     "id": "cv.clean-architecture.c4",
+     "type": "cloze",
+     "prompt": "The rule that source-code dependencies may only point inward toward the domain is called the ___ rule.",
+     "answer": "dependency",
+     "why": "Robert C. Martin's dependency rule is the one idea everything else in Clean Architecture serves; layers are just a way to enforce it."
+    },
+    {
+     "id": "cv.clean-architecture.c5",
+     "type": "mc",
+     "prompt": "A five-screen internal tool will be used by one department for a year. Which structure is most defensible?",
+     "options": [
+      "A single Razor Pages or MVC app with EF used directly",
+      "Four-project Clean Architecture with CQRS",
+      "Three microservices behind an API gateway",
+      "A modular monolith with Kafka between modules"
+     ],
+     "answer": 0,
+     "why": "Clean Architecture pays off with complex, long-lived rules. For short-lived CRUD the extra mapping and indirection cost more than they save; saying so shows judgement, not ignorance."
+    },
+    {
+     "id": "cv.clean-architecture.c6",
+     "type": "cloze",
+     "prompt": "The single place where ports are wired to concrete adapters, Program.cs in ASP.NET Core, is called the ___.",
+     "answer": "composition root",
+     "why": "Only the composition root knows every concrete type, so swapping an adapter (say SQL Server for PostgreSQL) is a one-line registration change."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.clean-architecture.e1",
+     "prompt": "Why Clean Architecture over a plain MVC monolith? When would you not use it?",
+     "seconds": 150,
+     "modelAnswer": "First, they are not really alternatives: MVC is a presentation pattern and monolith is a deployment shape, while Clean Architecture is about dependency direction. The real choice is whether business rules live in controllers next to EF, or in a core that knows nothing about frameworks.\n\nClean Architecture puts entities and rules in a Domain project, use cases and ports such as IInvoiceRepository in Application, EF Core, SQL Server and message brokers in Infrastructure, and a thin API on top. Dependencies point inward, and Program.cs wires adapters to ports. That buys me unit tests of business rules without a database, the ability to swap infrastructure, for example PostgreSQL or a Kafka publisher, by touching one adapter, and a codebase where new developers know where things go.\n\nI would not use it for a small, short-lived CRUD tool: the extra projects and mapping cost more than they return, and Razor Pages with EF directly is fine. I also would not jump to microservices for structure alone; a modular monolith with clean modules gets most of the benefit. Microservices are justified when teams or scaling needs diverge.",
+     "rubric": [
+      "Separates deployment (monolith), presentation (MVC) and dependency direction (Clean)",
+      "States the dependency rule and the layer responsibilities",
+      "Ports defined in the core, adapters in Infrastructure, composition root",
+      "Concrete benefits: testable rules, swappable infrastructure",
+      "Names the cost: ceremony, mapping, indirection",
+      "Says when not to use it and mentions modular monolith"
+     ]
+    },
+    {
+     "id": "cv.clean-architecture.e2",
+     "prompt": "Tell me about a service you structured with Clean Architecture at Moveo. What went into each layer, and what would you change now?",
+     "seconds": 150,
+     "modelAnswer": "A strong answer picks one real service and stays concrete; fill in your own specifics. Start with the business purpose in a sentence, for example one of the ERP modules you took over, such as payroll or tenders, and who used it.\n\nThen walk the layers. Domain: which entities and rules lived there, for example a calculation or a state transition that must never break. Application: the use cases and the ports, such as repositories, a message publisher for Kafka, or a cache interface for Redis. Infrastructure: EF Core against SQL Server or PostgreSQL, the Kafka producer, Redis, Elasticsearch, and how they were registered. API: thin controllers and JWT-based authorization.\n\nThen show judgement. What did the structure buy you, such as tests of rules without a database, or swapping a store? Where did it cost you, such as mapping boilerplate or too many projects for a small module? What would you change: perhaps fewer layers for simple CRUD modules, projection straight to DTOs for read paths, or architecture tests that fail the build when Domain references Infrastructure. End with how you would apply the same shape to an agent service in Python.",
+     "rubric": [
+      "Names a real service and its business purpose",
+      "Concrete contents for Domain, Application, Infrastructure, API",
+      "Shows where Kafka, Redis or databases plug in as adapters",
+      "States a real benefit observed",
+      "States a real cost or mistake and what to change",
+      "Connects the shape to the target role"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.clean-architecture.s1",
+     "situation": "You take over an ERP after a management change. Payroll rules are scattered across controllers and stored procedures, there are no tests, and about 50 people rely on it daily. Leadership wants the tender module rebuilt as a separate microservice next quarter.",
+     "question": "What do you recommend first?",
+     "options": [
+      {
+       "text": "Inside the existing app, carve payroll and tenders into clean modules with rules in a domain core and characterisation tests around current behaviour; extract tenders as a service only if team or scaling needs justify it.",
+       "verdict": "best",
+       "why": "Reduces risk for daily users, gets testable rules first, and keeps the microservice option open without paying its operational cost prematurely."
+      },
+      {
+       "text": "Build the tender microservice with full Clean Architecture now and leave payroll as it is.",
+       "verdict": "ok",
+       "why": "Delivers what was asked and the new service can be clean, but you add distributed-system cost and leave the riskiest code, payroll, untested."
+      },
+      {
+       "text": "Rewrite the whole ERP as microservices with Clean Architecture.",
+       "verdict": "bad",
+       "why": "A rewrite of a system 50 people depend on daily, with no tests to define current behaviour, is the highest-risk option."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.oop-solid",
+   "title": "OOP and SOLID in C#",
+   "tease": "Your CV says \"OOP principles\". Name one SOLID letter you have broken on purpose, and why.",
+   "primer": {
+    "problem": "Your profile claims high-performance software built with OOP principles. Interviewers test that with SOLID, interfaces and inheritance questions, then ask for an example. Reciting acronyms is not enough; you must show how each principle made code easier to test or change.",
+    "picture": "Think of **interfaces** as Angular services you inject: the component depends on a contract, and a test swaps in a fake. **SOLID** is five rules that keep classes small and swappable. **Composition over inheritance** means building behaviour from injected parts instead of deep base classes, like stacking HTTP interceptors rather than subclassing HttpClient. Python gets the same effect with duck typing and `Protocol`.",
+    "terms": [
+     {
+      "term": "SRP",
+      "def": "Single Responsibility: a class should have one reason to change, meaning one actor whose requirements drive it."
+     },
+     {
+      "term": "LSP",
+      "def": "Liskov Substitution: any subtype must work wherever its base type is expected without surprising the caller."
+     },
+     {
+      "term": "DIP",
+      "def": "Dependency Inversion: high-level policy depends on abstractions, and low-level details implement those abstractions."
+     },
+     {
+      "term": "Composition over inheritance",
+      "def": "Getting behaviour by holding and delegating to other objects rather than by extending a base class."
+     },
+     {
+      "term": "Test double",
+      "def": "A fake, stub or mock object that replaces a real dependency in a test, made easy by interfaces."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "The four OOP pillars are encapsulation, abstraction, inheritance and polymorphism, but interviews go straight to **SOLID**:\n\n**S**ingle responsibility: one reason to change. A `PayrollService` that calculates, writes Excel and sends email has three. **O**pen/closed: add behaviour by adding code, not editing working code, for example a new `ITaxRule` implementation registered in DI instead of another `switch` case. **L**iskov substitution: subtypes must honour the base contract; a `ReadOnlyRepository` that throws `NotSupportedException` from `Add` breaks every caller written against the base. **I**nterface segregation: small interfaces; a report job should not depend on a 30-method `IUserService`. **D**ependency inversion: policy depends on abstractions; this is what Clean Architecture's ports are.\n\n**Composition over inheritance**: deep base-class hierarchies couple every child to the parent's internals (the fragile base class problem) and you only get one base class in C#. Prefer small interfaces plus injected collaborators, and decorators for cross-cutting concerns such as caching or retries. Mark classes `sealed` unless they are designed for extension. Use inheritance for genuine is-a relationships with a stable base, such as `BackgroundService` or `DbContext`.\n\nInterfaces are what make code testable: if `ApproveInvoice` takes `IClock` and `IInvoiceRepository`, a unit test can freeze time and use an in-memory fake. Overdoing it is also a smell: an interface for every class with exactly one implementation and no test seam is ceremony. Modern C# helps: records for immutable value objects, primary constructors for DI, pattern matching for polymorphism over closed sets. In Python, `typing.Protocol` gives structural interfaces with the same testing benefit.",
+    "snippet": "public interface ITaxRule { bool Applies(Employee e); decimal Compute(Employee e); }\n\npublic sealed class PayrollCalculator(IEnumerable<ITaxRule> rules) {\n    public decimal NetPay(Employee e) =>\n        e.Gross - rules.Where(r => r.Applies(e)).Sum(r => r.Compute(e));\n}\n\n// Open/closed: a new rule is a new class plus one registration\nbuilder.Services.AddScoped<ITaxRule, PensionContribution>();\nbuilder.Services.AddScoped<ITaxRule, IncomeTax>();\n\n// Decorator: caching added by composition, not inheritance\npublic sealed class CachedRates(IRates inner, IMemoryCache cache) : IRates {\n    public Task<decimal> Get(string ccy) =>\n        cache.GetOrCreateAsync(ccy, _ => inner.Get(ccy))!;\n}",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "Architectural principles (.NET architecture guide)",
+     "url": "https://learn.microsoft.com/en-us/dotnet/architecture/modern-web-apps-azure/architectural-principles"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.oop-solid.c1",
+     "type": "mc",
+     "prompt": "A ReadOnlyEmployeeRepository inherits from EmployeeRepository and throws NotSupportedException from Save. Which principle does this violate?",
+     "options": [
+      "Liskov substitution",
+      "Single responsibility",
+      "Open/closed",
+      "Interface segregation"
+     ],
+     "answer": 0,
+     "why": "Callers written against EmployeeRepository expect Save to work, so the subtype is not substitutable. Interface segregation is tempting, and it is the fix: split read and write interfaces so the read-only type never promises Save."
+    },
+    {
+     "id": "cv.oop-solid.c2",
+     "type": "mc",
+     "prompt": "Payroll needs a new deduction type. Which change best follows open/closed?",
+     "options": [
+      "Add a new ITaxRule implementation and register it in DI",
+      "Add a new case to the switch in PayrollCalculator",
+      "Add a boolean flag parameter to NetPay",
+      "Copy PayrollCalculator into PayrollCalculatorV2"
+     ],
+     "answer": 0,
+     "why": "Existing tested code stays untouched; the calculator iterates whatever rules are registered. A new switch case modifies working code and grows a god method."
+    },
+    {
+     "id": "cv.oop-solid.c3",
+     "type": "tf",
+     "prompt": "Dependency inversion means low-level modules should create the high-level modules that use them.",
+     "answer": false,
+     "why": "It means both depend on abstractions owned by the high-level policy; the details implement them. Who creates objects is the composition root's job, through DI."
+    },
+    {
+     "id": "cv.oop-solid.c4",
+     "type": "mc",
+     "prompt": "Why is composition usually preferred over inheritance in C# services?",
+     "options": [
+      "It avoids coupling to a base class's internals and allows combining behaviours, since C# has single class inheritance",
+      "Inheritance is slower at runtime because of virtual dispatch",
+      "Inheritance cannot be used with dependency injection",
+      "Composition removes the need for interfaces"
+     ],
+     "answer": 0,
+     "why": "The fragile base class problem and single inheritance are the real reasons. Virtual call overhead is negligible and is not why teams avoid deep hierarchies."
+    },
+    {
+     "id": "cv.oop-solid.c5",
+     "type": "cloze",
+     "prompt": "Splitting a 30-method IUserService into IUserReader and IUserAdmin so a report job depends only on reading applies the ___ principle.",
+     "answer": "interface segregation",
+     "why": "Clients should not depend on methods they do not use. Smaller interfaces also make test doubles trivial to write."
+    },
+    {
+     "id": "cv.oop-solid.c6",
+     "type": "cloze",
+     "prompt": "A class that wraps another implementation of the same interface to add caching or retries, without inheritance, is the ___ pattern.",
+     "answer": "decorator",
+     "why": "Decorators add cross-cutting behaviour by composition and stack cleanly; in DI you register the decorator over the inner implementation."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.oop-solid.e1",
+     "prompt": "Your CV says you write software using OOP principles. Pick two SOLID principles and show me how they changed real code you wrote.",
+     "seconds": 120,
+     "modelAnswer": "I will take dependency inversion and open/closed, and I would anchor them in one of my own services; here is the shape.\n\nDependency inversion: in the clean-architecture services at Moveo, use cases depended on interfaces defined in the application layer, such as a repository or a message publisher, and Infrastructure implemented them with EF Core or Kafka. The practical win was testing: I could unit test a business rule with an in-memory fake and a frozen clock, no database, no broker. It also meant switching a store was a change to one adapter and one DI registration.\n\nOpen/closed: where rules vary by type, say different calculation or validation rules, I prefer one interface with one class per rule, all registered in DI and iterated by the calculator. Adding a rule then means adding a class, not editing a growing switch statement that already passed testing.\n\nI also try not to overdo it: an interface with one implementation and no test seam is ceremony, and I prefer composition and decorators over deep inheritance, keeping classes sealed unless designed for extension.",
+     "rubric": [
+      "Defines both chosen principles correctly",
+      "Gives a concrete example tied to own work (fill in specifics)",
+      "Shows the practical benefit: testability or safe extension",
+      "Mentions composition over inheritance or decorators",
+      "Shows judgement about over-abstraction"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.oop-solid.s1",
+     "situation": "In code review a junior has created BaseReportService with 14 virtual methods, and six report classes that override different subsets of them. A new report needs half of one parent's behaviour and half of another's.",
+     "question": "What do you advise?",
+     "options": [
+      {
+       "text": "Replace the hierarchy with small interfaces (data source, formatter, exporter) and compose each report from injected parts; walk the junior through why the base class became fragile.",
+       "verdict": "best",
+       "why": "Composition solves the half-and-half need directly, removes fragile-base coupling, and the review becomes mentoring rather than just a rejection."
+      },
+      {
+       "text": "Add a seventh subclass that inherits from one parent and copies the methods it needs from the other.",
+       "verdict": "bad",
+       "why": "Duplicates logic and deepens the fragile hierarchy; the next variation will be worse."
+      },
+      {
+       "text": "Approve it for now and open a ticket to refactor later.",
+       "verdict": "ok",
+       "why": "Pragmatic under a deadline, but the new report is exactly the moment the design breaks, so deferring increases the cost."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.ef-automapper",
+   "title": "EF Core, raw SQL and AutoMapper",
+   "tease": "One page, 201 SQL queries. And the AutoMapper you used is no longer free for every company.",
+   "primer": {
+    "problem": "Your CV lists Entity Framework, AutoMapper and extensive raw SQL for reports. Interviewers will check you know why EF pages go slow, when you leave EF for SQL, and whether you noticed that AutoMapper changed its licence in 2025, which matters to every client you advise.",
+    "picture": "**EF Core** is a translator plus a notebook. The **DbContext** turns LINQ into SQL, and its **change tracker** writes down a snapshot of every entity it loads so `SaveChanges` can work out the UPDATEs. Reading thousands of rows you will never edit fills that notebook for nothing, so use **AsNoTracking** or project to DTOs. **AutoMapper** copies entity fields into DTOs by naming convention; `ProjectTo` pushes that mapping into the SQL `SELECT`.",
+    "terms": [
+     {
+      "term": "Change tracker",
+      "def": "The DbContext component that snapshots loaded entities and compares them on SaveChanges to generate INSERT, UPDATE and DELETE."
+     },
+     {
+      "term": "N+1 query",
+      "def": "One query loads a list, then one extra query runs per row to fetch related data, often hidden by lazy loading."
+     },
+     {
+      "term": "Projection",
+      "def": "Selecting only the columns you need into a DTO with Select, so EF neither loads nor tracks full entities."
+     },
+     {
+      "term": "Migration",
+      "def": "A generated C# class describing a schema change, applied in order to move the database between model versions."
+     },
+     {
+      "term": "Dapper",
+      "def": "A lightweight micro-ORM that maps results of hand-written SQL to objects, with almost no overhead and no change tracking."
+     },
+     {
+      "term": "ProjectTo",
+      "def": "An AutoMapper extension on IQueryable that turns a mapping configuration into a Select expression EF translates to SQL."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "A `DbContext` is a unit of work. Entities loaded through it are tracked: EF keeps a snapshot and on `SaveChanges` runs `DetectChanges` to emit only the changed columns. That is great for edit screens and wasteful for read-only lists and reports, so use `AsNoTracking()` or, better, project with `Select` into a DTO, which fetches only needed columns and tracks nothing.\n\n**N+1**: load 200 orders, then touch `order.Customer` in a loop with lazy loading on, and you get 201 round trips. EF Core has lazy loading off by default (it needs proxies), but loops calling the DB do the same. Fix with `Include`, a projection, or `AsSplitQuery` when several collection Includes would cause a cartesian explosion. Log generated SQL in development to catch it.\n\n**Migrations**: `dotnet ef migrations add`, reviewed in PRs like code. In production, do not call `Migrate()` from several app instances at startup; generate an idempotent script (`dotnet ef migrations script --idempotent`) or a migration bundle and run it once in the pipeline.\n\n**Drop to SQL** for reports with window functions, CTEs and heavy aggregation, bulk work, or tuned hot paths: `FromSql` with interpolated (parameterised) values, `SqlQuery<T>` for unmapped DTOs, `ExecuteUpdate`/`ExecuteDelete` for set-based changes without loading entities, or Dapper. Never concatenate strings into SQL.\n\n**AutoMapper**: `ProjectTo<TDto>()` maps inside the query; calling `Map` after `ToList` loads full entities first. Run `AssertConfigurationIsValid` in a test, because unmapped members fail at runtime, not compile time. Licence: from **v15 (July 2025)** AutoMapper is commercial from Lucky Penny Software, free under a Community licence only for organisations under $5M annual revenue (plus non-production use); 14.x stays open source but unmaintained. Alternatives: hand-written mapping or the Mapperly source generator.",
+    "snippet": "// N+1: one query for orders, then one per order for Customer\nforeach (var o in await db.Orders.ToListAsync())\n    Console.WriteLine(o.Customer.Name);            // lazy load per row\n\n// Fix: project, untracked, one query, only needed columns\nvar rows = await db.Orders\n    .Where(o => o.Date >= from)\n    .Select(o => new OrderRow(o.Id, o.Customer.Name, o.Total))\n    .ToListAsync();\n\n// AutoMapper doing the same projection in SQL\nvar dtos = await db.Orders.ProjectTo<OrderRow>(mapper.ConfigurationProvider).ToListAsync();\n\n// Set-based update without loading entities (EF Core 7+)\nawait db.Invoices.Where(i => i.Due < today && !i.Paid)\n    .ExecuteUpdateAsync(s => s.SetProperty(i => i.Overdue, true));\n\n// Raw SQL, still parameterised\nvar top = await db.Database.SqlQuery<TopClient>(\n    $\"SELECT TOP 10 ClientId, SUM(Total) AS Revenue FROM Orders WHERE Year = {year} GROUP BY ClientId ORDER BY Revenue DESC\")\n    .ToListAsync();",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "Efficient Querying (EF Core performance docs)",
+     "url": "https://learn.microsoft.com/en-us/ef/core/performance/efficient-querying"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.ef-automapper.c1",
+     "type": "mc",
+     "prompt": "A list page loads 200 orders and shows each customer's name. SQL Profiler shows 201 queries. What is the cleanest fix?",
+     "options": [
+      "Project with Select into a DTO including Customer.Name, so one query runs",
+      "Wrap the loop in a transaction",
+      "Call AsNoTracking on the orders query",
+      "Increase the connection pool size"
+     ],
+     "answer": 0,
+     "why": "Projection joins the customer in the same SQL. AsNoTracking is tempting but only stops tracking; it does nothing about the extra per-row queries."
+    },
+    {
+     "id": "cv.ef-automapper.c2",
+     "type": "tf",
+     "prompt": "Calling mapper.Map<List<OrderDto>>(db.Orders.ToList()) is as efficient as db.Orders.ProjectTo<OrderDto>(config).",
+     "answer": false,
+     "why": "Map after ToList materialises full tracked entities with every column first. ProjectTo builds a Select expression, so SQL fetches only mapped columns and nothing is tracked."
+    },
+    {
+     "id": "cv.ef-automapper.c3",
+     "type": "mc",
+     "prompt": "Which is the safest way to apply EF Core migrations to a production database served by four app instances?",
+     "options": [
+      "Generate an idempotent script or migration bundle and run it once in the deployment pipeline",
+      "Call context.Database.Migrate() in Program.cs on every instance",
+      "Run dotnet ef database update from a developer laptop",
+      "Let EnsureCreated build the schema"
+     ],
+     "answer": 0,
+     "why": "One controlled, reviewed step avoids four instances racing to migrate. EnsureCreated bypasses migrations entirely and cannot evolve an existing schema."
+    },
+    {
+     "id": "cv.ef-automapper.c4",
+     "type": "mc",
+     "prompt": "Which statement about AutoMapper's licensing is correct as of 2026?",
+     "options": [
+      "From version 15 it is commercially licensed, with a free Community licence for organisations under $5M annual revenue",
+      "It remains MIT-licensed and free for everyone",
+      "Microsoft acquired it and ships it inside .NET 10",
+      "It was deprecated in favour of EF Core's built-in mapper"
+     ],
+     "answer": 0,
+     "why": "Jimmy Bogard moved AutoMapper and MediatR to commercial editions under Lucky Penny Software in July 2025. Older 14.x builds remain open source but are no longer maintained, so clients above the threshold need a licence or a migration to Mapperly or hand mapping."
+    },
+    {
+     "id": "cv.ef-automapper.c5",
+     "type": "cloze",
+     "prompt": "To update thousands of rows in one SQL statement without loading them into the change tracker, use EF Core's ___ method.",
+     "answer": "ExecuteUpdate",
+     "why": "ExecuteUpdate and ExecuteDelete (EF Core 7+) run set-based SQL directly. They bypass tracked entities, so any already-loaded instances will not reflect the change."
+    },
+    {
+     "id": "cv.ef-automapper.c6",
+     "type": "tf",
+     "prompt": "db.Database.SqlQuery with an interpolated string like $\"... WHERE Year = {year}\" sends year as a SQL parameter, not concatenated text.",
+     "answer": true,
+     "why": "EF converts the FormattableString holes into DbParameters, preventing injection. The Raw variants (SqlQueryRaw, FromSqlRaw) with string concatenation are where injection creeps in."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.ef-automapper.e1",
+     "prompt": "When do you use EF Core and when do you drop to raw SQL? Your CV says you wrote a lot of raw SQL for reports.",
+     "seconds": 120,
+     "modelAnswer": "EF Core is my default for transactional work: loading an aggregate, changing it, and letting the change tracker generate the UPDATE inside one unit of work. It keeps the domain model, migrations and queries in one place and is safe against injection.\n\nFor reads I am careful: AsNoTracking or, better, a Select projection into a DTO, so only needed columns come back and nothing is tracked. I watch the generated SQL for N+1 patterns and use Include or split queries where needed.\n\nI drop to SQL when the query is really a report: window functions, CTEs, pivots, heavy aggregation across many tables, or when I need precise control of the plan and indexes. That is where much of my raw SQL went, along with SSRS reports. In EF Core I use SqlQuery or FromSql with interpolated parameters, ExecuteUpdate for set-based changes, or Dapper for lean read paths. The rule is never to concatenate user input into SQL. The same split applies in Python: SQLAlchemy ORM for writes, plain SQL for analytics.",
+     "rubric": [
+      "EF for transactional unit-of-work writes with change tracking",
+      "Read paths: AsNoTracking or projection, awareness of N+1",
+      "Concrete reasons for raw SQL: reports, window functions, bulk, plan control",
+      "Names the mechanisms: SqlQuery/FromSql, ExecuteUpdate, Dapper",
+      "Parameterisation, no string concatenation"
+     ]
+    },
+    {
+     "id": "cv.ef-automapper.e2",
+     "prompt": "Would you still put AutoMapper in a new project for a client today?",
+     "seconds": 90,
+     "modelAnswer": "Probably not by default, and I would explain why. Since version 15, released in July 2025, AutoMapper is commercially licensed through Lucky Penny Software. It is free under the Community licence only for organisations under five million dollars in annual revenue and for non-production use; larger clients need a paid licence. The old 14.x line stays open source but is no longer maintained, so staying on it means accepting unpatched issues. For a consulting client, that is a procurement and risk decision, not just a technical one.\n\nTechnically, AutoMapper also hides logic: unmapped members fail at runtime unless you test the configuration, and it is easy to call Map after loading full entities instead of using ProjectTo. For a new service I would prefer explicit mapping in code or the Mapperly source generator, which produces the mapping at compile time, so errors are compile errors and there is no runtime reflection. If a client already uses AutoMapper heavily, I would check their licence status and migrate gradually rather than rip it out.",
+     "rubric": [
+      "States the v15 / July 2025 commercial licence change",
+      "Knows the Community threshold (under $5M revenue) and that 14.x is unmaintained",
+      "Treats it as a client risk and procurement question",
+      "Names technical pitfalls: runtime mapping errors, Map vs ProjectTo",
+      "Offers alternatives: manual mapping or Mapperly"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.ef-automapper.s1",
+     "situation": "A monthly government report built with EF LINQ takes four minutes and times out. It joins six tables, aggregates by region and month, and ranks top suppliers. The entities are loaded with Include and summed in C#.",
+     "question": "What do you do?",
+     "options": [
+      {
+       "text": "Rewrite it as a set-based SQL query (CTE plus window function for ranking), check the plan and indexes, and call it via SqlQuery into a DTO or a view.",
+       "verdict": "best",
+       "why": "Aggregation and ranking belong in the database; this removes the data transfer and in-memory work and lets you tune indexes against a known plan."
+      },
+      {
+       "text": "Add AsNoTracking to the existing query.",
+       "verdict": "ok",
+       "why": "Saves some memory and CPU, but the query still pulls every row to C# to aggregate. A small gain on the wrong problem."
+      },
+      {
+       "text": "Raise the command timeout to fifteen minutes.",
+       "verdict": "bad",
+       "why": "Hides the problem and keeps a long-running query holding resources on a shared database."
+      },
+      {
+       "text": "Cache the report output in Redis for a month.",
+       "verdict": "bad",
+       "why": "The data changes during the month, and the first run still times out; caching does not fix the query."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.signalr",
+   "title": "SignalR: hubs, transports, scale",
+   "tease": "You add a second server and half your users stop getting notifications. What did SignalR need?",
+   "primer": {
+    "problem": "Users expect live updates: a report finished, a record changed, an agent typing its answer token by token. Plain HTTP only answers when asked. Your CV lists SignalR, so expect questions on how it picks a transport and what breaks when you run more than one server.",
+    "picture": "A **hub** is like a controller whose methods both sides can call: the browser calls `SendMessage`, the server calls `Clients.Group(\"hr\").ReceiveMessage(...)`. Under it SignalR keeps one persistent connection and **negotiates** the best **transport** the client and server share. With several servers, each only knows its own connections, so a **backplane** relays messages between them, much like a Kafka topic every server subscribes to.",
+    "sketch": "client --POST /hub/negotiate--> server: \"WebSockets, SSE, LongPolling\"\nclient tries WebSockets -> else Server-Sent Events -> else Long Polling\n\n server A <--Redis pub/sub--> server B   (backplane)\n   |                            |\n users 1-500                 users 501-1000",
+    "terms": [
+     {
+      "term": "Hub",
+      "def": "A server-side class whose public methods clients call, and which calls methods on connected clients by connection, group or user."
+     },
+     {
+      "term": "Transport",
+      "def": "How bytes travel: WebSockets (two-way), Server-Sent Events (server to client) or long polling (repeated held requests)."
+     },
+     {
+      "term": "Negotiate",
+      "def": "An initial HTTP request where client and server agree on a connection id and the best supported transport."
+     },
+     {
+      "term": "Backplane",
+      "def": "A shared message bus, such as Redis pub/sub, that forwards hub messages to every server in a farm."
+     },
+     {
+      "term": "Sticky sessions",
+      "def": "Load balancer affinity that keeps a client on the same server for all requests of its connection."
+     },
+     {
+      "term": "Group",
+      "def": "A named set of connections you can message together; membership lives in memory and is lost when a connection drops."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "A SignalR client first POSTs to `/hub/negotiate`. The server answers with a connection token and its available transports, and the client tries them in order: **WebSockets** (full duplex, best), then **Server-Sent Events** (server-to-client stream; client-to-server messages go as separate HTTP POSTs), then **long polling** (the server holds a request until there is data, then the client immediately re-polls). Corporate proxies that block WebSockets are why the fallbacks still matter. You can restrict transports or set `SkipNegotiation` when you know WebSockets will work.\n\nOn the server, hub methods call `Clients.All`, `Clients.Caller`, `Clients.User(userId)` (all connections of an authenticated user) or `Clients.Group(name)`. Hubs are transient: a new instance per call, so never store state in hub fields. Groups are in-memory and not persisted; re-add connections in `OnConnectedAsync` after reconnects. Browsers cannot set headers on WebSocket or SSE requests, so JWTs arrive in the `access_token` query string and you read them in `JwtBearerEvents.OnMessageReceived`.\n\n**Scale-out**: each server only knows its own connections. With two or more servers you need (1) **sticky sessions**, because negotiate and the following requests must hit the same server unless you use WebSockets only with negotiation skipped, and (2) a **backplane**: Redis pub/sub forwards every message to every server, or **Azure SignalR Service** takes over the connections entirely. On AWS without Azure, Redis (ElastiCache) is the usual backplane.\n\n**Streaming**: a hub method returning `IAsyncEnumerable<T>` or `ChannelReader<T>` streams items to the client, which is exactly the shape of streaming LLM tokens or agent steps. In the target Python stack the equivalent is FastAPI's `StreamingResponse` emitting SSE, or API Gateway WebSocket APIs on AWS.",
+    "snippet": "public class AgentHub(IAgentRunner agent) : Hub {\n    public override async Task OnConnectedAsync() {\n        var matter = Context.GetHttpContext()!.Request.Query[\"matter\"];\n        await Groups.AddToGroupAsync(Context.ConnectionId, $\"matter-{matter}\");\n    }\n    // server-to-client stream: one item per token or agent step\n    public async IAsyncEnumerable<string> Ask(string question,\n        [EnumeratorCancellation] CancellationToken ct) {\n        await foreach (var token in agent.StreamAsync(question, ct))\n            yield return token;\n    }\n}\n\nbuilder.Services.AddSignalR()\n    .AddStackExchangeRedis(redisConn);        // backplane for >1 server\napp.MapHub<AgentHub>(\"/hubs/agent\");",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "Overview of ASP.NET Core SignalR",
+     "url": "https://learn.microsoft.com/en-us/aspnet/core/signalr/introduction"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.signalr.c1",
+     "type": "mc",
+     "prompt": "In what order does a SignalR client try transports by default after negotiation?",
+     "options": [
+      "WebSockets, then Server-Sent Events, then long polling",
+      "Long polling, then Server-Sent Events, then WebSockets",
+      "Server-Sent Events, then WebSockets, then long polling",
+      "Only WebSockets; the others must be enabled manually"
+     ],
+     "answer": 0,
+     "why": "SignalR prefers the most capable transport and falls back when a proxy or browser blocks it. All three are enabled by default."
+    },
+    {
+     "id": "cv.signalr.c2",
+     "type": "tf",
+     "prompt": "With the Server-Sent Events transport, client-to-server hub calls still travel over the same SSE stream.",
+     "answer": false,
+     "why": "SSE is one-way, server to client. SignalR sends client-to-server messages as separate HTTP POST requests, which is one reason it needs sticky sessions."
+    },
+    {
+     "id": "cv.signalr.c3",
+     "type": "mc",
+     "prompt": "You scale a SignalR app from one to three servers behind a load balancer without other changes. What breaks?",
+     "options": [
+      "Messages sent on one server do not reach clients connected to the others, and negotiation can fail without sticky sessions",
+      "WebSockets stop working entirely",
+      "Hub methods execute three times per call",
+      "Group membership is automatically duplicated, causing repeated messages"
+     ],
+     "answer": 0,
+     "why": "Each server holds only its own connections. A backplane like Redis or Azure SignalR Service fans messages out, and sticky sessions keep negotiate and follow-up requests on one server."
+    },
+    {
+     "id": "cv.signalr.c4",
+     "type": "mc",
+     "prompt": "Why does a SignalR client send its JWT in the access_token query string?",
+     "options": [
+      "Browser WebSocket and EventSource APIs cannot set custom Authorization headers",
+      "SignalR forbids headers for performance",
+      "Query strings are encrypted while headers are not",
+      "JWTs are too large for headers"
+     ],
+     "answer": 0,
+     "why": "The browser APIs simply lack header support, so the token goes in the query and the server reads it in OnMessageReceived. Over TLS both are encrypted; the risk is query strings ending up in logs."
+    },
+    {
+     "id": "cv.signalr.c5",
+     "type": "cloze",
+     "prompt": "Because SignalR groups are not persisted, connections must be re-added to their groups, typically in the hub's ___ override.",
+     "answer": "OnConnectedAsync",
+     "why": "A reconnect creates a new connection id with no memberships. Deriving groups from the user and claims on connect keeps them correct."
+    },
+    {
+     "id": "cv.signalr.c6",
+     "type": "tf",
+     "prompt": "A hub method returning IAsyncEnumerable<T> streams items to the client as they are produced.",
+     "answer": true,
+     "why": "That is SignalR server-to-client streaming, and it maps directly to streaming an agent's tokens or intermediate steps to the UI with cancellation support."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.signalr.e1",
+     "prompt": "You list SignalR. How does it pick a transport, and what do you need to run it on more than one server?",
+     "seconds": 120,
+     "modelAnswer": "The client starts with a negotiate POST. The server returns a connection token and the transports it supports, and the client tries them best-first: WebSockets, which is full duplex; then Server-Sent Events, where the server streams to the client and client calls go as separate POSTs; then long polling, where the server holds a request open until it has data. The fallbacks exist mainly for proxies and networks that block WebSockets.\n\nOn more than one server, each server only knows its own connections. So you need two things. First, sticky sessions at the load balancer, because the negotiate call and the following requests must reach the same server, unless you force WebSockets and skip negotiation. Second, a backplane: Redis pub/sub forwards every message to every server so Clients.Group or Clients.User reach everyone, or you hand connections to Azure SignalR Service. On AWS I would use ElastiCache Redis. I would also mention that groups are in memory, so you re-add on connect, and that hub streaming with IAsyncEnumerable is how I would push agent tokens to a UI.",
+     "rubric": [
+      "Describes negotiate then fallback order WebSockets, SSE, long polling",
+      "Explains SSE is one-way with POSTs for client calls",
+      "Sticky sessions and why (unless WebSockets with SkipNegotiation)",
+      "Backplane: Redis or Azure SignalR Service",
+      "Groups are in memory and must be re-added",
+      "Connects streaming to agent output"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.signalr.s1",
+     "situation": "A law-firm review tool streams an agent's answer to paralegals token by token. It runs on two ECS tasks behind an Application Load Balancer. Some users see answers arrive; others see nothing until they refresh.",
+     "question": "What is the most likely cause and fix?",
+     "options": [
+      {
+       "text": "The agent runs on the task that received the request, but the user's connection lives on the other task. Add a Redis backplane (ElastiCache) and enable ALB stickiness, or return the stream from the hub method on the same connection.",
+       "verdict": "best",
+       "why": "Explains the symptom precisely: only users whose connection and work landed on the same task see output. Both fixes address cross-server delivery."
+      },
+      {
+       "text": "Switch the client to long polling for reliability.",
+       "verdict": "bad",
+       "why": "Long polling has the same cross-server problem and needs stickiness even more."
+      },
+      {
+       "text": "Scale down to one task.",
+       "verdict": "ok",
+       "why": "It would stop the symptom immediately and is a reasonable short-term mitigation, but it removes redundancy and does not scale."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cv.quartz-closedxml",
+   "title": "Quartz.NET jobs and ClosedXML",
+   "tease": "The nightly job ran on both servers and every client got two invoices. What was missing?",
+   "primer": {
+    "problem": "Business apps need work that runs on a schedule, not on a click: nightly imports, monthly payroll, report exports. Your CV lists Quartz.NET and ClosedXML. Expect questions on how jobs avoid running twice across servers, what happens when the server was down at fire time, and why big Excel exports eat memory.",
+    "picture": "Quartz splits **what** from **when**. A **job** is the code (`IJob.Execute`), a **trigger** is the schedule (simple interval or **cron**), and the **scheduler** fires triggers on a thread pool. Store schedules in RAM and they vanish on restart; store them in SQL Server with the **ADO job store** and several servers can share them, each trigger fired by exactly one node. **ClosedXML** builds the whole workbook as objects in memory before saving, which is friendly code but heavy for a million rows.",
+    "sketch": "IJob (what)  +  ITrigger (when: cron \"0 0 2 * * ?\")\n        \\         /\n        IScheduler --- thread pool\n            |\n   AdoJobStore (SQL Server QRTZ_ tables, row locks)\n      /           \\\n  node A          node B     clustered: one node fires each trigger",
+    "terms": [
+     {
+      "term": "Trigger",
+      "def": "The schedule attached to a Quartz job, such as a cron expression or a repeat interval, with start and end times."
+     },
+     {
+      "term": "ADO job store",
+      "def": "Quartz storage in a relational database via ADO.NET, so jobs survive restarts and can be shared by a cluster."
+     },
+     {
+      "term": "Misfire",
+      "def": "A trigger that missed its fire time, for example because the scheduler was down or all threads were busy."
+     },
+     {
+      "term": "Hosted service",
+      "def": "A class implementing IHostedService or BackgroundService that the .NET host starts and stops with the app."
+     },
+     {
+      "term": "Hangfire",
+      "def": "A .NET background job library with persistent storage, automatic retries, recurring jobs and a built-in dashboard."
+     },
+     {
+      "term": "OpenXML SDK",
+      "def": "Microsoft's low-level library for Office file formats; it offers a streaming writer that ClosedXML builds upon."
+     }
+    ]
+   },
+   "lesson": {
+    "body": "In Quartz.NET a **job** implements `IJob`, a **trigger** decides when it runs, and the scheduler matches them. Quartz cron has a **seconds** field first, unlike Unix cron: `0 0 2 * * ?` is 02:00 daily, and `?` means \"no specific value\" for day-of-month or day-of-week, since you cannot set both. `[DisallowConcurrentExecution]` stops overlapping runs of the same job key; `JobDataMap` carries parameters. With `Quartz.Extensions.Hosting` it runs as a hosted service with DI-created jobs.\n\nThe default **RAM job store** forgets everything on restart and every app instance schedules independently, so two servers send two invoices. The **ADO job store** keeps jobs and triggers in database tables; with `quartz.jobStore.clustered = true` and a unique instance id per node, nodes coordinate through database row locks and each trigger fires on exactly one node, with failover if a node dies mid-job (when `RequestRecovery` is set). Server clocks must be synchronised.\n\nA **misfire** happens when a trigger could not fire on time (scheduler down, no free thread) for longer than the `misfireThreshold` (default 60 seconds). The trigger's misfire instruction decides: fire once now, or do nothing and wait for the next slot. Choose per job: a missed payroll run should fire now; a missed \"refresh dashboard cache\" can skip.\n\nSimpler options: a plain `BackgroundService` is fine for in-process loops but has no persistence and runs on every instance. **Hangfire** adds persistent queues, retries and a dashboard and is great for fire-and-forget work. On AWS, EventBridge Scheduler triggering a container task is the managed equivalent.\n\n**ClosedXML** wraps the OpenXML SDK with a friendly API (`InsertTable`, styles, formulas) but holds the workbook as an object graph, so memory grows with cell count. For huge exports, write with the OpenXML SDK's streaming `OpenXmlWriter`, page through data, or offer CSV.",
+    "snippet": "[DisallowConcurrentExecution]\npublic class MonthlyPayrollExport(IPayrollQueries q, IFileStore files) : IJob {\n    public async Task Execute(IJobExecutionContext ctx) {\n        var rows = await q.MonthRowsAsync(ctx.CancellationToken);\n        using var wb = new XLWorkbook();\n        wb.AddWorksheet(\"Payroll\").Cell(1, 1).InsertTable(rows);\n        using var ms = new MemoryStream();\n        wb.SaveAs(ms);\n        await files.SaveAsync(\"payroll.xlsx\", ms.ToArray());\n    }\n}\n\nbuilder.Services.AddQuartz(q => {\n    q.UsePersistentStore(s => { s.UseSqlServer(cs); s.UseClustering(); });\n    var key = new JobKey(\"payroll-export\");\n    q.AddJob<MonthlyPayrollExport>(key, j => j.RequestRecovery());\n    q.AddTrigger(t => t.ForJob(key)\n        .WithCronSchedule(\"0 0 2 1 * ?\", c => c.WithMisfireHandlingInstructionFireAndProceed()));\n});\nbuilder.Services.AddQuartzHostedService(o => o.WaitForJobsToComplete = true);",
+    "snippetLang": "csharp",
+    "source": {
+     "title": "Quartz.NET documentation: Advanced (Enterprise) Features",
+     "url": "https://www.quartz-scheduler.net/documentation/quartz-3.x/tutorial/advanced-enterprise-features.html"
+    }
+   },
+   "cards": [
+    {
+     "id": "cv.quartz-closedxml.c1",
+     "type": "mc",
+     "prompt": "A Quartz.NET app with the default RAM job store is deployed to two servers. What happens to a nightly trigger?",
+     "options": [
+      "It fires on both servers, so the job runs twice",
+      "It fires on whichever server started first only",
+      "Quartz detects the duplicate and fails to start",
+      "It alternates between servers each night"
+     ],
+     "answer": 0,
+     "why": "RAMJobStore instances know nothing about each other. Only the ADO job store with clustering enabled coordinates through database locks so one node fires each trigger."
+    },
+    {
+     "id": "cv.quartz-closedxml.c2",
+     "type": "mc",
+     "prompt": "What does the Quartz cron expression 0 30 6 ? * MON-FRI mean?",
+     "options": [
+      "06:30:00 every weekday",
+      "00:30 on the 6th of each month",
+      "Every 30 minutes from 06:00 on weekdays",
+      "06:00:30 every weekday"
+     ],
+     "answer": 0,
+     "why": "Quartz cron starts with seconds, then minutes and hours: second 0, minute 30, hour 6. Reading it as Unix cron (minute first) gives the tempting wrong answers."
+    },
+    {
+     "id": "cv.quartz-closedxml.c3",
+     "type": "tf",
+     "prompt": "In Quartz.NET clustering, the nodes communicate with each other directly over the network to elect a leader.",
+     "answer": false,
+     "why": "There is no node-to-node protocol. Coordination happens entirely through the shared database tables and row locks, which is why clocks must be in sync."
+    },
+    {
+     "id": "cv.quartz-closedxml.c4",
+     "type": "mc",
+     "prompt": "Your server was down for maintenance during the 02:00 payroll trigger and comes back at 03:30. What decides whether it runs now?",
+     "options": [
+      "The trigger's misfire instruction, applied because the delay exceeded misfireThreshold",
+      "Quartz always runs all missed fires immediately",
+      "Quartz always skips missed fires",
+      "The JobDataMap"
+     ],
+     "answer": 0,
+     "why": "Per-trigger misfire instructions choose between firing now or waiting for the next schedule. Defaults vary by trigger type, so set them explicitly for business-critical jobs."
+    },
+    {
+     "id": "cv.quartz-closedxml.c5",
+     "type": "cloze",
+     "prompt": "To stop a Quartz job from overlapping with its own previous run, decorate the job class with ___.",
+     "answer": "[DisallowConcurrentExecution]",
+     "why": "The attribute applies per job key. Without it, a slow run can still be executing when the next trigger fires and both touch the same data."
+    },
+    {
+     "id": "cv.quartz-closedxml.c6",
+     "type": "cloze",
+     "prompt": "ClosedXML keeps the entire workbook as an in-memory object graph; for exports of millions of rows, a streaming alternative is the OpenXML SDK's ___.",
+     "answer": "OpenXmlWriter",
+     "why": "The SAX-style OpenXmlWriter writes rows sequentially with flat memory. ClosedXML is ideal for formatted reports of moderate size, not for bulk dumps."
+    }
+   ],
+   "explain": [
+    {
+     "id": "cv.quartz-closedxml.e1",
+     "prompt": "Why Quartz.NET rather than a BackgroundService or Hangfire? How do you stop a job running twice when you have several servers?",
+     "seconds": 120,
+     "modelAnswer": "It depends on the job. A BackgroundService is the simplest: a loop inside the app, fine for polling a queue, but no persistence, no cron, no retries, and it runs on every instance. Hangfire adds persistent storage, retries and a dashboard, and is very good for fire-and-forget or delayed work triggered by users. Quartz.NET is strongest for calendar-style schedules: cron with seconds, calendars to exclude holidays, misfire policies and clustering, which fits payroll runs, nightly imports or month-end report exports.\n\nTo avoid double runs I use the ADO job store in SQL Server with clustering enabled. Every node shares the QRTZ tables and coordinates through row locks, so each trigger fires on exactly one node, and with RequestRecovery a job is re-run if its node dies mid-job. I add DisallowConcurrentExecution so a slow run never overlaps the next, set explicit misfire instructions per trigger, keep server clocks synchronised, and still make the job idempotent, for example by recording which month was already exported, because exactly-once is never fully guaranteed. On AWS the managed alternative is EventBridge Scheduler starting a task.",
+     "rubric": [
+      "Contrasts BackgroundService, Hangfire and Quartz honestly",
+      "ADO job store with clustering; coordination via database locks",
+      "DisallowConcurrentExecution against overlap",
+      "Misfire instructions chosen per job",
+      "Idempotent jobs as defence in depth",
+      "Names a managed cloud equivalent"
+     ]
+    }
+   ],
+   "scenarios": [
+    {
+     "id": "cv.quartz-closedxml.s1",
+     "situation": "An institution's staff export a yearly audit report to Excel from your app. With 800,000 rows the export takes minutes, the app pod hits its memory limit and restarts, and other users' requests fail with it.",
+     "question": "What do you do?",
+     "options": [
+      {
+       "text": "Move the export to a background job that streams rows from the database with the OpenXML SDK writer (or CSV), stores the file, and notifies the user when it is ready.",
+       "verdict": "best",
+       "why": "Flat memory, no request timeout, and the web pods stay healthy for other users. A notification (for example via SignalR) closes the loop."
+      },
+      {
+       "text": "Raise the pod memory limit to 8 GB.",
+       "verdict": "ok",
+       "why": "Buys time, but memory still scales with row count and the export still blocks a request thread for minutes."
+      },
+      {
+       "text": "Load everything with EF tracking and build the sheet with ClosedXML cell by cell in the request.",
+       "verdict": "bad",
+       "why": "This is the current design with extra change-tracking overhead on top."
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "boss": {
+  "questions": [
+   {
+    "id": "cv.boss.net-1",
+    "prompt": "Walk me through how you would structure a new .NET service with Clean Architecture, and why.",
+    "seconds": 180,
+    "modelOutline": "Start with the why: business rules that must outlive frameworks, and tests that run without a database. Target .NET 10, the current LTS. Lay out four projects: Domain (entities, value objects, rules, no framework references), Application (use cases and ports such as repositories, publishers, clock), Infrastructure (EF Core against SQL Server or PostgreSQL, Kafka, Redis, external APIs) and a thin API with JWT authorization. State the dependency rule and the composition root in Program.cs. Cover DI lifetimes: DbContext scoped, caches singleton, no captive dependencies. Read paths project to DTOs; raw SQL where reports need it; mapping by hand or Mapperly given AutoMapper's licence. Add architecture tests that enforce the layers. Close with trade-offs: ceremony for small CRUD, when a modular monolith beats microservices, and how the same ports-and-adapters shape fits a Python agent service.",
+    "rubric": [
+     "Justifies the structure by business need, not fashion",
+     "Names the layers and what goes in each",
+     "States the dependency rule and composition root",
+     "Correct DI lifetimes, mentions captive dependency",
+     "Data access choices: EF for writes, projection or SQL for reads",
+     "Mentions testing: unit tests of rules, architecture tests",
+     "Names costs and when not to use it",
+     "Targets a current, supported .NET version"
+    ]
+   },
+   {
+    "id": "cv.boss.net-2",
+    "prompt": "Your CV lists SignalR, Quartz.NET and Entity Framework. Design the backend for a feature where a user requests a large report, it is generated in the background, and they are notified live when it is ready.",
+    "seconds": 180,
+    "modelOutline": "The API endpoint validates the request and records a report job row, then returns 202 with an id instead of blocking. A worker picks it up: Quartz.NET with the ADO job store and clustering if it must also run on schedules, or Hangfire or a queue for on-demand work, so it runs exactly once across servers. The job queries with raw SQL or projected, untracked EF queries, streams rows to a file with the OpenXML writer or CSV rather than building a huge ClosedXML workbook in memory, and stores it in blob storage such as S3. On completion it updates the job row and notifies the user through a SignalR hub via Clients.User, with a Redis backplane and sticky sessions because there are several servers. Close with failure handling: retries, idempotency, misfires, and a polling fallback if the live connection dropped.",
+    "rubric": [
+     "Returns 202 and decouples request from generation",
+     "Background execution that runs once across servers (clustered Quartz or durable queue)",
+     "Efficient data access: projection, untracked or raw SQL",
+     "Memory-safe export: streaming writer or CSV, not a huge in-memory workbook",
+     "Stores the file and records status",
+     "SignalR notification via Clients.User with backplane and stickiness",
+     "Failure handling: retries, idempotency, fallback to polling"
+    ]
+   }
+  ]
+ }
+}

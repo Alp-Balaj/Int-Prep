@@ -14,7 +14,7 @@ const err = (m) => errors.push(m);
 let pack;
 try { pack = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { console.error('JSON parse error: ' + e.message); process.exit(1); }
 
-const TIERS = ['agentic', 'aws', 'react-python', 'security', 'ediscovery'];
+const TIERS = ['agentic', 'aws', 'react-python', 'security', 'ediscovery', 'cv'];
 const words = (s) => (s || '').trim().split(/\s+/).filter(Boolean).length;
 
 if (!pack.tier || !TIERS.includes(pack.tier.id)) err('tier.id must be one of ' + TIERS.join('|'));
@@ -52,7 +52,7 @@ for (const n of pack.nodes || []) {
   const wc = words(L.body);
   if (wc < 120 || wc > 340) err(w + ': lesson.body is ' + wc + ' words (want 150-300)');
   if (L.snippet && L.snippet.split('\n').length > 26) err(w + ': snippet > 24 lines');
-  if (L.snippet && !['python', 'hcl', 'tsx', 'json', 'bash', 'text'].includes(L.snippetLang)) err(w + ': snippetLang invalid');
+  if (L.snippet && !['python', 'hcl', 'tsx', 'json', 'bash', 'text', 'csharp', 'sql', 'typescript'].includes(L.snippetLang)) err(w + ': snippetLang invalid');
   if (!L.source?.url?.startsWith('http') || !L.source?.title) err(w + ': lesson.source needs title and http url');
   if (!Array.isArray(n.cards) || n.cards.length < 3) err(w + ': needs >= 3 cards');
   for (const c of n.cards || []) {

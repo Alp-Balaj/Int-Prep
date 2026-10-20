@@ -11,8 +11,13 @@ const PACK_FILES = [
   'content/tier2a-react-python.json',
   'content/tier2b-security.json',
   'content/tier3-ediscovery.json',
+  'content/cv-a-dotnet.json',
+  'content/cv-b-data.json',
+  'content/cv-c-distributed.json',
+  'content/cv-d-angular.json',
+  'content/cv-e-senior-ai.json',
 ];
-const TIER_ORDER = ['agentic', 'aws', 'react-python', 'security', 'ediscovery'];
+const TIER_ORDER = ['agentic', 'aws', 'react-python', 'security', 'ediscovery', 'cv'];
 const TIER_WEIGHT = { 1: 6, 2: 3, 3: 1 };
 const DAY = 86400000;
 const CLEAN_HIT_MS = 8000;

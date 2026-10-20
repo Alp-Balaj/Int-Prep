@@ -5,7 +5,7 @@ One JSON file per content pack. Several packs may share a `tier.id`; the game me
 ```jsonc
 {
   "tier": {
-    "id": "agentic",              // one of: agentic | aws | react-python | security | ediscovery
+    "id": "agentic",              // one of: agentic | aws | react-python | security | ediscovery | cv
     "name": "Agentic AI",
     "level": 1,                   // 1, 2 or 3 (from the prep doc)
     "tease": "<= 100 chars. A hook, not a summary. e.g. 'Why the demo that wowed the room would leak a client's documents on day one.'"
@@ -25,7 +25,7 @@ One JSON file per content pack. Several packs may share a `tier.id`; the game me
       "lesson": {
         "body": "150-300 words. Plain prose, paragraphs separated by a blank line. Inline **bold** and `code` allowed, nothing else. Teach the actual mechanism, not a definition list. Where it helps, map to what the learner already knows: C#, .NET, Angular, Azure DevOps, Elasticsearch, Kafka, SQL Server.",
         "snippet": "optional, <= 24 lines. Real code (Python/HCL/TSX/JSON/bash) or an ASCII diagram. Omit the key if none.",
-        "snippetLang": "python | hcl | tsx | json | bash | text",
+        "snippetLang": "python | hcl | tsx | json | bash | text | csharp | sql | typescript",
         "source": { "title": "Primary doc page title", "url": "https://..." }   // one authoritative URL, prefer official docs
       },
       "cards": [

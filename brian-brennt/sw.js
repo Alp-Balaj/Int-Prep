@@ -1,11 +1,12 @@
 /* Service worker for the installed app (Railway only). Network first, so a deploy shows up on the
    next open; falls back to the cache offline. /api is never cached: sync.js treats a failed call
    as "stay local", and app.js keeps progress in the browser until it can sync again. */
-const CACHE = 'bb-v1';
+const CACHE = 'bb-v2';
 const SHELL = ['/', 'app.js', 'sync.js', 'manifest.webmanifest', 'icons/icon-192.png',
   'content/tier1a-agentic-orchestration.json', 'content/tier1b-agentic-rag-evals.json', 'content/tier1c-aws-services.json',
   'content/tier1d-terraform-iam.json', 'content/tier2a-react-python.json', 'content/tier2b-security.json',
-  'content/tier3-ediscovery.json', 'content/stories.json', 'content/quests.json'];
+  'content/tier3-ediscovery.json', 'content/cv-a-dotnet.json', 'content/cv-b-data.json',
+  'content/cv-c-distributed.json', 'content/cv-d-angular.json', 'content/cv-e-senior-ai.json', 'content/stories.json', 'content/quests.json'];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (e) => {
