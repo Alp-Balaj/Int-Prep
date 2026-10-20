@@ -54,6 +54,7 @@ const defaultState = () => ({
   final: { attempts: [], beaten: false },
   quests: {},                  // quest/portfolio id -> date done
   lessons: {},                 // nodeId -> first read date
+  primers: {},                 // nodeId -> date the primer was first read
   settings: { interviewDate: '2026-11-02', startDate: '2026-10-20' },
 });
 const defaultStories = () => ({ updatedAt: 0, items: {} }); // storyId -> {situation, decision, result, hook, iv, due, ratings:[]}
@@ -148,7 +149,7 @@ async function loadContent() {
     const tid = p.tier.id;
     tiers[tid] = tiers[tid] || { id: tid, name: p.tier.name, level: p.tier.level, tease: p.tier.tease, nodes: [] };
     for (const n of p.nodes) {
-      const node = { id: n.id, tier: tid, level: p.tier.level, title: n.title, tease: n.tease, lesson: n.lesson, cards: [], explain: [], scenarios: [] };
+      const node = { id: n.id, tier: tid, level: p.tier.level, title: n.title, tease: n.tease, primer: n.primer, lesson: n.lesson, cards: [], explain: [], scenarios: [] };
       for (const c of n.cards || []) { const it = { ...c, kind: 'recall', node: n.id, tier: tid, level: p.tier.level }; items[c.id] = it; node.cards.push(c.id); }
       for (const e of n.explain || []) { const it = { ...e, kind: 'explain', node: n.id, tier: tid, level: p.tier.level }; items[e.id] = it; node.explain.push(e.id); }
       for (const s of n.scenarios || []) { const it = { ...s, kind: 'scenario', node: n.id, tier: tid, level: p.tier.level }; items[s.id] = it; node.scenarios.push(s.id); }
@@ -509,9 +510,20 @@ function renderFinalBossCard() {
 }
 
 // ---- Lesson
+function primerBlock(n) {
+  const P = n.primer; if (!P) return '';
+  return `<div class="primer">
+    <div class="eyebrow">Primer</div>
+    <div class="lesson">${paras(P.problem)}${paras(P.picture)}</div>
+    ${P.sketch ? `<pre><code>${esc(P.sketch)}</code></pre>` : ''}
+    <dl class="terms">${P.terms.map(t => `<div><dt>${inline(t.term)}</dt><dd>${inline(t.def)}</dd></div>`).join('')}</dl>
+  </div>`;
+}
+function markPrimer(id) { if (!S.primers[id]) { S.primers[id] = todayStr(); persist('state'); } }
 function renderLesson() {
   const n = C.nodeById[route.node]; if (!n) return renderTree();
   const p = nodeProgress(n); const L = n.lesson;
+  markPrimer(n.id);
   if (!S.lessons[n.id]) { S.lessons[n.id] = todayStr(); S.xp += XP.lesson; persist('state'); tele(t => t.lessonsRead.push(n.id)); }
   const tier = C.tiers[n.tier]; const idx = tier.nodes.indexOf(n.id); const next = tier.nodes[idx + 1] ? C.nodeById[tier.nodes[idx + 1]] : null;
   return `
@@ -521,6 +533,8 @@ function renderLesson() {
     <h1>${esc(n.title)}</h1>
     <div class="small muted num" style="margin-top:4px">${p.seen}/${p.total} seen · ${p.stable} stable · ${n.cards.length} recall, ${n.scenarios.length} scenarios, ${n.explain.length} explain prompts</div>
     <hr>
+    ${primerBlock(n)}
+    ${n.primer ? '<div class="eyebrow" style="margin-top:18px">Lesson</div>' : ''}
     <div class="lesson">${paras(L.body)}</div>
     ${L.snippet ? `<pre><code>${esc(L.snippet)}</code></pre>` : ''}
     <p class="small" style="margin-top:12px">Source: <a href="${esc(L.source.url)}" target="_blank" rel="noopener">${esc(L.source.title)}</a></p>
@@ -548,6 +562,11 @@ function renderSession() {
   if (id.startsWith('story:')) return head + renderStoryDrillCard(id.slice(6), true);
   const it = C.items[id];
   const node = C.nodeById[it.node]; const first = !seen(id);
+  if (first && node.primer && !S.primers[node.id]) return head + `<section class="card">
+    <div class="kind"><span class="eyebrow">New matter · ${esc(node.title)}</span>${tierPill(it.level)}</div>
+    ${primerBlock(node)}
+    <div class="row" style="justify-content:space-between;margin-top:14px"><button class="btn ghost small" data-lesson="${node.id}" style="min-height:32px">Read the full lesson</button><button class="btn primary" data-primer-ok="${node.id}">Got it → first card</button></div>
+  </section>`;
   const kindLabel = { recall: first ? 'New card' : 'Review', explain: 'Explain out loud', scenario: 'Scenario' }[it.kind];
   let body = '';
   if (it.kind === 'recall') {
@@ -865,6 +884,7 @@ function bind(root) {
   root.querySelectorAll('[data-start]').forEach(b => b.addEventListener('click', () => startSession(b.dataset.start, b.dataset.tier)));
   root.querySelectorAll('[data-node]').forEach(b => b.addEventListener('click', () => { const n = C.nodeById[b.dataset.node]; if (nodeUnlocked(n)) go('lesson', { node: n.id }); else toast(`Locked. Finish ${C.nodeById[C.tiers[n.tier].nodes[C.tiers[n.tier].nodes.indexOf(n.id) - 1]].title} first.`); }));
   root.querySelectorAll('[data-drill]').forEach(b => b.addEventListener('click', () => startNodeDrill(b.dataset.drill)));
+  root.querySelectorAll('[data-primer-ok]').forEach(b => b.addEventListener('click', () => { markPrimer(b.dataset.primerOk); render(); window.scrollTo({ top: 0 }); }));
   root.querySelectorAll('[data-lesson]').forEach(b => b.addEventListener('click', () => { if (session) { sessionTele({ end: Date.now(), completed: false, answered: session.answered, quitAt: session.idx, toLesson: true }); session = null; } go('lesson', { node: b.dataset.lesson }); }));
   root.querySelectorAll('[data-boss]').forEach(b => b.addEventListener('click', () => startBoss(b.dataset.boss)));
   root.querySelectorAll('[data-boss-begin]').forEach(b => b.addEventListener('click', () => { boss.phase = 'q'; render(); }));

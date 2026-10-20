@@ -200,6 +200,11 @@ main {
 .lesson p:last-child { margin-bottom: 0; }
 pre { margin: 12px 0 0; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-x: auto; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5; }
 .lesson strong { color: var(--accent-2); font-weight: 600; }
+.primer { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-top: 4px; }
+.primer .eyebrow { margin-bottom: 8px; }
+.terms { display: grid; gap: 8px; margin-top: 12px; }
+.terms dt { font-weight: 600; color: var(--accent-2); }
+.terms dd { margin: 2px 0 0; color: var(--fg-2); max-width: 65ch; }
 
 /* Session / card */
 .session-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
@@ -336,6 +341,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
   let answered = 0, guard = 0;
   while (main.querySelector('.card') && guard++ < 80) {
     const card = main.querySelector('.card');
+    const primerOk = card.querySelector('[data-primer-ok]'); if (primerOk) { log('primer shown', primerOk.dataset.primerOk, 'terms', card.querySelectorAll('.terms dt').length); primerOk.click(); await sleep(60); continue; }
     const mc = card.querySelector('[data-mc]'); const tf = card.querySelector('[data-tf]'); const sc = card.querySelector('[data-sc]'); const rev = card.querySelector('[data-reveal]'); const story = card.querySelector('[data-story-reveal]');
     if (mc) mc.click(); else if (tf) tf.click(); else if (sc) sc.click(); else if (rev) { rev.click(); await sleep(50); const r = main.querySelector('[data-rate="2"]'); if (r) r.click(); } else if (story) { story.click(); await sleep(50); main.querySelector('[data-story-rate="2"]')?.click(); } else { log('unknown card', card.className); break; }
     await sleep(60);

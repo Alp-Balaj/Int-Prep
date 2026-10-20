@@ -10,6 +10,41 @@
       "id": "react-python.mental-model",
       "title": "React Mental Model",
       "tease": "React has no DI, no templates and no ngOnInit. Why does it still feel familiar after a day?",
+      "primer": {
+        "problem": "Your client's portal is built in React, but your team thinks in Angular: classes, templates, services injected through constructors. You need a reliable way to read and write React screens, mapping each Angular habit to its React counterpart and spotting the ones that do not carry over.",
+        "picture": "Picture a React component as one C# method that returns a description of the screen. React calls that method again whenever its data changes, compares the new description with the old one, and patches only the differences into the page. No template file, no class, no lifecycle interface: the method body is all of it. Inputs arrive as **props** (read-only, like `@Input`). Memory between calls comes from **hooks** such as `useState`, which React stores beside the component in the order the method calls them.",
+        "sketch": "props (inputs) ---------+\n                         v\nstate (useState) --> Component() --> JSX (screen description)\n      ^                                   |\n      |                                   v\n  setter called <---- user event <---- page\n  (React calls Component() again)",
+        "terms": [
+          {
+            "term": "JSX",
+            "def": "HTML-like syntax written inside JavaScript that compiles to plain function calls, so loops and conditions are ordinary code."
+          },
+          {
+            "term": "props",
+            "def": "The read-only arguments a parent passes to a child component, including callback functions the child calls to report events."
+          },
+          {
+            "term": "hook",
+            "def": "A function whose name starts with use that gives a component memory or side effects; React tracks hooks by call order."
+          },
+          {
+            "term": "useEffect",
+            "def": "A hook that runs code after the screen updates, re-runs when listed values change, and may return a cleanup function."
+          },
+          {
+            "term": "custom hook",
+            "def": "Your own useSomething function that combines other hooks, the React way to share logic Angular would put in a service."
+          },
+          {
+            "term": "context",
+            "def": "A value provided high in the component tree that any descendant can read without passing it down through every level."
+          },
+          {
+            "term": "StrictMode",
+            "def": "A development-only wrapper that mounts, unmounts and remounts each component once to expose effects missing their cleanup."
+          }
+        ]
+      },
       "lesson": {
         "body": "An Angular component is a class with a decorator, a template in its own mini-language, constructor injection and lifecycle hooks. A React component is a plain function that returns **JSX**, and JSX compiles to ordinary function calls, so control flow is JavaScript: `cond ? <A/> : null`, `items.map(...)`, no `@if` or `@for`. The function is template and class at once, and React simply calls it again whenever its state or its parent changes. Re-running the function is the change detection.\n\nProps are read-only inputs (`@Input`). There is no `@Output`: the parent passes a callback prop. State lives in `useState`, which returns a value and a setter; calling the setter schedules a re-render, and React batches every update made in the same event into one render. If the new value is `Object.is`-equal to the old one, React bails out.\n\n**Hooks** are the sharpest difference. React stores hook state per component instance in a list indexed by call order, which is why hooks must be called unconditionally at the top level, never inside `if` or loops. `useEffect` is not `ngOnInit`: it runs after the browser paints, re-runs when its dependency array changes, and its returned function is the cleanup, so it covers `ngOnChanges` and `ngOnDestroy` in one place. `useLayoutEffect` runs before paint. In development, `<StrictMode>` mounts, unmounts and remounts every component once, so a missing cleanup shows itself immediately.\n\nServices with DI do not exist. Reuse comes from **custom hooks**: a function named `useSomething` that composes other hooks. Context is the closest thing to a provider on the component tree, but every consumer re-renders when the value changes, so keep context values small and stable. The current line is React 19.3 (September 2026): `ref` is a normal prop, `use()` reads promises and context, and Actions handle form submission.",
         "snippet": "function useMatter(id: string) {                  // custom hook ~ an injectable service\n  const [matter, setMatter] = useState<Matter | null>(null);\n  useEffect(() => {\n    const ctrl = new AbortController();\n    fetch(`/api/matters/${id}`, { signal: ctrl.signal })\n      .then(r => r.json()).then(setMatter);\n    return () => ctrl.abort();                    // cleanup ~ ngOnDestroy / takeUntilDestroyed\n  }, [id]);                                       // re-run when id changes ~ ngOnChanges\n  return matter;\n}\n\nexport function MatterHeader({ id, onClose }: { id: string; onClose: () => void }) {\n  const matter = useMatter(id);                   // props ~ @Input, callback ~ @Output\n  if (!matter) return <Spinner />;                // early return instead of @if\n  return (\n    <header>\n      <h1>{matter.title}</h1>\n      <ul>{matter.custodians.map(c => <li key={c.id}>{c.name}</li>)}</ul>\n      <button onClick={onClose}>Close</button>\n    </header>\n  );\n}",
@@ -138,6 +173,41 @@
       "id": "react-python.state",
       "title": "Server vs Client State",
       "tease": "TanStack Query treats your data as stale the instant it arrives. That default is the point.",
+      "primer": {
+        "problem": "A review screen shows data the server owns, like matters and document tags, plus things only this browser cares about, like which rows are ticked. Mix them in one store and you end up hand-writing caching, retries and refresh logic, and associates still see stale privilege tags after a colleague changed them.",
+        "picture": "Keep two separate things. **Server state** is like an Elasticsearch result cached in the browser: the backend is the source of truth, each cached entry has an id (the **query key**), and the cache decides when to fetch again. TanStack Query runs that cache. **Client state** is like a field on a singleton Angular service holding a `BehaviorSubject`: ticked rows, open panels. Zustand or Redux holds it, and each component subscribes only to the slice it reads, like `distinctUntilChanged`.",
+        "sketch": "Backend API --fetch--> TanStack Query cache --> components\n     ^                 (key ['matter', id])\n     |\n     +-- useMutation --> invalidate key --> refetch\n\nZustand store (ticked rows, open panel) --selector--> components",
+        "terms": [
+          {
+            "term": "server state",
+            "def": "Data the backend owns and the browser only caches, so it can go out of date while the user looks at it."
+          },
+          {
+            "term": "client state",
+            "def": "Data that exists only in the browser, such as ticked checkboxes or an unsent draft, which the server never sees."
+          },
+          {
+            "term": "query key",
+            "def": "The array, such as ['matter', id], that TanStack Query uses to identify, share and invalidate one cached result."
+          },
+          {
+            "term": "staleTime",
+            "def": "How long fetched data counts as fresh; afterwards TanStack Query refetches on triggers like window focus. The default is zero."
+          },
+          {
+            "term": "mutation",
+            "def": "TanStack Query's name for a write to the server, such as a PATCH, with callbacks for what to do on success."
+          },
+          {
+            "term": "invalidateQueries",
+            "def": "A call that marks cached results under a key as out of date so any screen showing them refetches."
+          },
+          {
+            "term": "selector",
+            "def": "A function like s => s.selected that picks one slice of a store, so the component re-renders only when that slice changes."
+          }
+        ]
+      },
       "lesson": {
         "body": "In Angular a service holds a `BehaviorSubject`, components subscribe through the async pipe, and NgRx effects fetch from the API. React splits that job in two, and the split is the lesson.\n\n**Server state** is a client-side cache of data the backend owns: matters, documents, run history. TanStack Query v5 (`@tanstack/react-query` 5.104) manages it. `useQuery({ queryKey, queryFn })` identifies cached data by key, the way an Elasticsearch document is identified by id. Its defaults are opinionated: `staleTime` is 0, so data is stale the moment it arrives; stale queries refetch when a new component mounts, the window regains focus or the network reconnects; failed queries retry 3 times with exponential backoff (1s, 2s, 4s, capped at 30s) before the error reaches the UI; inactive data is garbage collected after `gcTime` of 5 minutes (renamed from `cacheTime` in v5). Results are structurally shared so unchanged data keeps its reference. Writes go through `useMutation`, and `queryClient.invalidateQueries({ queryKey })` marks related data stale so it refetches. In v5 the loading flag is `isPending`.\n\n**Client state** is UI state the server never sees: selected rows, open panels, an unsent draft. Zustand 5 is a store created with `create`; components subscribe with a selector, `useStore(s => s.selected)`, and re-render only when the selected slice changes, like `distinctUntilChanged` in a pipe. Redux Toolkit 2.13 is NgRx's ancestor: `createSlice` with Immer so reducers can mutate drafts, and RTK Query if you want server state in the same library.\n\nThe mistake Angular developers make is putting API responses in a global store and reimplementing caching, retries and invalidation by hand. Let TanStack Query own that; keep the store small. In an agent console, the conversation history is server state and the pending approval dialog is client state.",
         "snippet": "const matterQuery = (id: string) => queryOptions({\n  queryKey: ['matter', id],                                   // cache identity, like a doc id\n  queryFn: ({ signal }) => api.get<Matter>(`/matters/${id}`, { signal }),\n  staleTime: 60_000,                                          // default is 0\n});\n\nfunction MatterPanel({ id }: { id: string }) {\n  const { data, isPending, error } = useQuery(matterQuery(id));\n  const qc = useQueryClient();\n  const rename = useMutation({\n    mutationFn: (title: string) => api.patch(`/matters/${id}`, { title }),\n    onSuccess: () => qc.invalidateQueries({ queryKey: ['matter', id] }),  // mark stale -> refetch\n  });\n  return <Header title={data.title} onRename={rename.mutate} busy={rename.isPending} />;\n}\n\nconst useReviewStore = create<ReviewState>()((set) => ({\n  selected: new Set<string>(),\n  toggle: (docId) => set((s) => {\n    const next = new Set(s.selected); next.has(docId) ? next.delete(docId) : next.add(docId);\n    return { selected: next };\n  }),\n}));\nconst count = useReviewStore((s) => s.selected.size);   // selector ~ distinctUntilChanged",
@@ -266,6 +336,41 @@
       "id": "react-python.routing",
       "title": "Routing and Guards",
       "tease": "React Router has no canActivate. The way most tutorials fake it leaks data. What replaced it in v8?",
+      "primer": {
+        "problem": "A law-firm portal has pages only some people may see, such as privileged documents only partners may open. The app must map each web address to a screen, fetch that screen's data first, and turn away users who are not signed in before any data loads, while the server keeps the final say.",
+        "picture": "React Router is Angular's router rebuilt around functions. Routes nest like `children` in an Angular route config and render into `<Outlet />`. Each route can have a **loader** (a resolver: fetch before showing) and **middleware** (a functional `canActivate` that runs first, outer route to inner, like ASP.NET Core middleware). Middleware can stop navigation by throwing a redirect, so no loader runs. All of this happens in the browser, so it decides only what to show; the API decides what to send.",
+        "sketch": "URL /matters/42\n  -> middleware (root, then child)   not signed in? throw redirect('/login')\n     -> loaders of all matched routes, in parallel\n        -> render Shell -> <Outlet /> -> MatterRoute\n  error anywhere -> nearest ErrorBoundary",
+        "terms": [
+          {
+            "term": "Outlet",
+            "def": "The placeholder where a parent route renders its matched child route, the same job as Angular's router-outlet."
+          },
+          {
+            "term": "loader",
+            "def": "A function attached to a route that fetches its data before the screen renders, like an Angular resolver."
+          },
+          {
+            "term": "action",
+            "def": "A route function that receives form submissions sent to that route and performs the write."
+          },
+          {
+            "term": "middleware",
+            "def": "Code that runs before a route's loaders in a nested chain and can redirect or pass values down to loaders."
+          },
+          {
+            "term": "redirect",
+            "def": "A helper you throw from middleware or a loader to stop the current navigation and send the user elsewhere."
+          },
+          {
+            "term": "ErrorBoundary",
+            "def": "A route-level component React Router shows when anything in that route throws, instead of leaving a blank screen."
+          },
+          {
+            "term": "code splitting",
+            "def": "Downloading a route's code only when a user first visits it, keeping the initial load small, like Angular's loadChildren."
+          }
+        ]
+      },
       "lesson": {
         "body": "React Router 8 shipped in June 2026 (now 8.5): ESM-only, Node 22 and React 19.2.7 or later, the `react-router-dom` package removed in favour of a single `react-router` package, and the v7 future flags, middleware included, promoted to defaults. Majors are now yearly, so expect v9 in 2027.\n\nRoutes nest and render children through `<Outlet />`, the `<router-outlet>` equivalent. In data mode you build a `createBrowserRouter([...])` tree; framework mode adds file-based routes, SSR and typed route modules on top of Vite. A **loader** runs before a route renders and its data arrives through `useLoaderData()`; loaders for all matched routes run in parallel, and navigation waits for them, exactly like Angular resolvers. An **action** receives form submissions. `lazy: () => import('./Route')` code-splits a route like `loadChildren`.\n\nThere is no `canActivate` primitive, so guards are idioms. The naive one is a wrapper component that checks auth and returns `<Navigate to='/login' replace />` or `<Outlet />`; it flashes while auth resolves and does nothing about data loaders that already ran. Better: `throw redirect('/login')` from a loader, so nothing renders and no data loads. Best in v8: **middleware**, `async ({ request, context }, next) => {...}`, which runs before loaders in a nested chain (root wraps parent wraps child), may throw a redirect, and passes typed values to loaders through `context.set(key, value)` where the key comes from `createContext<T>()`. `next()` may be called once; omit it and the router calls it for you. Errors render in the nearest `ErrorBoundary`, so a 403 from the API becomes a route-level error page rather than a blank screen.\n\nEvery one of these runs in the browser. For privileged documents the API must enforce authorization; the router only decides what to show.",
         "snippet": "import { createBrowserRouter, createContext, redirect, RouterProvider } from 'react-router';\n\nexport const userContext = createContext<User | null>(null);\n\nconst requireAuth = async ({ request, context }, next) => {       // ~ functional canActivate\n  const user = await session.current();\n  if (!user) throw redirect(`/login?from=${new URL(request.url).pathname}`);\n  context.set(userContext, user);                                 // typed, read by loaders below\n  return next();                                                  // optional: router calls it if omitted\n};\n\nconst router = createBrowserRouter([\n  { path: '/', Component: Shell, middleware: [requireAuth], ErrorBoundary: RouteError, children: [\n    { index: true, Component: Home },\n    { path: 'matters/:id',\n      lazy: () => import('./MatterRoute'),                        // code-split ~ loadChildren\n      loader: ({ params, context }) =>                            // ~ resolver, runs before render\n        api.matter(params.id!, context.get(userContext)!) },\n  ]},\n  { path: '/login', Component: Login },\n]);\n\nexport const App = () => <RouterProvider router={router} />;",
@@ -359,6 +464,40 @@
       "id": "react-python.rendering",
       "title": "Rendering and Memoization",
       "tease": "A parent re-render re-renders every child by default. So why does the compiler say stop memoizing?",
+      "primer": {
+        "problem": "A review grid with 60,000 documents freezes for seconds on every keystroke in a filter box. You need to know why React redraws so much, which tools stop needless redraws, and when the real fix is putting fewer rows on screen rather than adding clever caching everywhere.",
+        "picture": "In Angular with `OnPush`, a component is skipped unless its inputs change. React defaults the other way: when a component re-runs, every child re-runs too. **memo** opts a child into `OnPush`-style skipping by comparing each prop with `Object.is`: equal values for numbers and strings, the same instance for objects and functions, like `ReferenceEquals`. That only works if the parent hands over the same object and function references every time, which is what `useMemo` and `useCallback` preserve. The **React Compiler** now inserts most of this memoization automatically at build time.",
+        "terms": [
+          {
+            "term": "re-render",
+            "def": "React calling a component function again to get a fresh screen description, then applying only the differences to the page."
+          },
+          {
+            "term": "memo",
+            "def": "A wrapper that makes a component skip re-rendering when every prop is the same reference as last time."
+          },
+          {
+            "term": "useMemo and useCallback",
+            "def": "Hooks that keep a computed value or a function as the same reference between renders until listed dependencies change."
+          },
+          {
+            "term": "React Compiler",
+            "def": "A build-time plugin that adds memoization to components automatically, as long as the code follows React's rules."
+          },
+          {
+            "term": "key",
+            "def": "A stable id on each list item so React can match rows across renders, like Angular's trackBy."
+          },
+          {
+            "term": "useTransition",
+            "def": "A hook that marks a state update as low priority so typing stays responsive while a heavy re-render runs behind it."
+          },
+          {
+            "term": "virtualization",
+            "def": "Rendering only the rows currently visible in a scrolling list, so 60,000 items mount as a few dozen elements."
+          }
+        ]
+      },
       "lesson": {
         "body": "Angular with `OnPush` skips a component subtree unless an input reference changes, an event fires inside it or a signal it reads updates. React's default is the opposite: when a component re-renders, every child re-renders too, props changed or not. Rendering is usually cheap, so this is fine until it is not.\n\n`memo(Component)` is your `OnPush`. It shallow-compares the new props with the old ones using `Object.is` per prop and skips rendering when nothing changed. It breaks the moment a parent passes an inline object, array or arrow function, because each render creates a new reference. `useCallback(fn, deps)` keeps a function reference stable and `useMemo(() => value, deps)` keeps a derived value stable, which also caches expensive work such as filtering 60,000 document rows.\n\nThe **React Compiler** 1.0 (October 2025, `babel-plugin-react-compiler`) inserts this memoization automatically for components that follow the Rules of React. Official guidance: new code relies on the compiler and uses `useMemo`/`useCallback` only for precise control, for example a stable effect dependency; existing code keeps its memoization because removing it changes the compiler's output. Either way, measure with the Profiler before adding `memo`, because comparing props costs something too.\n\nLists need stable **keys**: an id, never the array index for anything that can reorder or filter, the same discipline as `trackBy`. `useTransition` marks a state update as non-urgent so keystrokes stay responsive while a large grid re-filters. For very long lists, virtualize (TanStack Virtual) so only visible rows mount.\n\nCode splitting is `lazy(() => import('./Reports'))` wrapped in `<Suspense fallback>`, the `loadChildren` equivalent, and Vite emits a chunk per dynamic import. Suspense also waits for data with `useSuspenseQuery` or `use(promise)`. React 19.3 made `<ViewTransition>` stable for animated route changes.",
         "snippet": "const DocumentRow = memo(function DocumentRow({ doc, onTag }: RowProps) {   // ~ OnPush\n  return <tr onClick={() => onTag(doc.id, 'privileged')}>...</tr>;\n});\n\nfunction ReviewGrid({ docs }: { docs: Doc[] }) {\n  const [filter, setFilter] = useState('');\n  const [isPending, startTransition] = useTransition();\n  const visible = useMemo(                                        // cache the expensive derivation\n    () => docs.filter(d => d.custodian.includes(filter)), [docs, filter]);\n  const onTag = useCallback((id: string, tag: Tag) => api.tag(id, tag), []);  // stable ref so memo holds\n  return (\n    <>\n      <input onChange={e => startTransition(() => setFilter(e.target.value))} />\n      <table><tbody>\n        {visible.map(d => <DocumentRow key={d.id} doc={d} onTag={onTag} />)}  {/* key ~ trackBy */}\n      </tbody></table>\n    </>\n  );\n}\n\nconst Reports = lazy(() => import('./Reports'));                 // ~ loadChildren\nexport const ReportsPage = () => (\n  <Suspense fallback={<Spinner />}><Reports /></Suspense>\n);",
@@ -488,6 +627,41 @@
       "id": "react-python.forms",
       "title": "Forms with RHF and Zod",
       "tease": "React Hook Form barely re-renders while you type. How, when React re-renders on every state change?",
+      "primer": {
+        "problem": "Associates fill in privilege-log entries: Bates ranges, a privilege basis, a description. The form must validate each field, show clear messages, stay fast while people type, and agree exactly with what the backend accepts, so a value the browser allows is never rejected by the server.",
+        "picture": "Angular reactive forms bundle form state and validators in one module; React has neither, so the job splits in two. **React Hook Form** leaves field values in the real browser inputs, the way a plain HTML form does, and reads them on blur or submit, so typing triggers no React re-renders. **Zod** is the validator: one schema object, like a C# DTO with DataAnnotations, from which the TypeScript type is also derived. A **resolver** plugs that schema into the form.",
+        "sketch": "<input {...register('batesStart')} />   (browser input holds the value)\n        | blur or submit\n        v\nzodResolver(Schema) --invalid--> formState.errors --> messages\n        | valid\n        v\nhandleSubmit(onSave) receives typed data",
+        "terms": [
+          {
+            "term": "controlled input",
+            "def": "An input whose value lives in React state and updates through onChange, so every keystroke re-renders the component."
+          },
+          {
+            "term": "uncontrolled input",
+            "def": "An input whose value lives in the browser's own element and is read when needed through a ref, a direct handle to that element."
+          },
+          {
+            "term": "register",
+            "def": "React Hook Form's function that wires a native input to the form by returning its name, ref and event handlers."
+          },
+          {
+            "term": "Zod schema",
+            "def": "A TypeScript object describing the allowed shape and rules of data, used to validate input and to derive types."
+          },
+          {
+            "term": "z.infer",
+            "def": "Zod's helper that turns a schema into a TypeScript type, so the form's data type and its validator stay identical."
+          },
+          {
+            "term": "resolver",
+            "def": "An adapter, such as zodResolver, that lets React Hook Form validate with an external schema library."
+          },
+          {
+            "term": "Bates number",
+            "def": "A unique stamped identifier like ABC000123 given to every page produced in litigation so it can be cited precisely."
+          }
+        ]
+      },
       "lesson": {
         "body": "Angular reactive forms give you `FormGroup`, `FormControl`, `Validators`, typed forms and `valueChanges`. React has no form module. An input is either **controlled** (`value` plus `onChange`, the component re-renders on every keystroke) or **uncontrolled** (the DOM owns the value and you read it through a ref). React Hook Form (7.90) is built on uncontrolled inputs: `register('batesStart')` returns `ref`, `name`, `onChange` and `onBlur` to spread onto a native element, so typing does not re-render the form. `handleSubmit(onValid)` validates and calls your handler with typed data; `formState.errors` holds messages; `useFieldArray` is your `FormArray`; `watch`/`useWatch` is `valueChanges`. The default `mode` is `onSubmit`, after which fields re-validate `onChange`; set `mode: 'onBlur'` for calmer UX. When a third-party widget is controlled and has no native input, wrap it with `Controller`.\n\nValidation moves to a schema library. **Zod 4** (July 2025, now 4.6) declares the shape once: `z.object({...})`, `.min()`, `.regex()`, `z.enum()`, cross-field rules via `.refine()` with a `path`, and `z.infer<typeof Schema>` derives the TypeScript type, so the DTO and the validator can never drift the way Angular validators and backend DTOs do. Plug it in with `zodResolver(Schema)` from `@hookform/resolvers` (v6). Zod 4 changed its error API: the Zod 3 `required_error` and `invalid_type_error` options are silently ignored, use the unified `error` parameter, or your custom messages quietly fall back to English defaults.\n\nBecause the schema is plain TypeScript, the same file can validate on a Node backend, and because it mirrors Pydantic, a FastAPI team can keep the JSON Schema identical on both sides. React 19 Actions and `useActionState` cover simple submit-and-show-result forms without any library.",
         "snippet": "const PrivilegeEntry = z.object({\n  batesStart: z.string().regex(/^[A-Z]{2,5}\\d{6,}$/, { error: 'Bates number like ABC000123' }),\n  batesEnd: z.string().regex(/^[A-Z]{2,5}\\d{6,}$/, { error: 'Bates number like ABC000123' }),\n  basis: z.enum(['attorney-client', 'work-product', 'both']),\n  description: z.string().min(20, { error: 'Describe the document without revealing its content' }),\n}).refine(v => v.batesEnd >= v.batesStart, { path: ['batesEnd'], error: 'End precedes start' });\ntype PrivilegeEntry = z.infer<typeof PrivilegeEntry>;     // DTO type derived from the validator\n\nfunction PrivilegeForm({ onSave }: { onSave: (e: PrivilegeEntry) => Promise<void> }) {\n  const { register, handleSubmit, formState: { errors, isSubmitting } } =\n    useForm<PrivilegeEntry>({ resolver: zodResolver(PrivilegeEntry), mode: 'onBlur' });\n  return (\n    <form onSubmit={handleSubmit(onSave)}>\n      <input {...register('batesStart')} />            {/* uncontrolled: ref + onChange */}\n      {errors.batesStart && <p role='alert'>{errors.batesStart.message}</p>}\n      <input {...register('batesEnd')} />\n      <select {...register('basis')}>\n        <option value='attorney-client'>Attorney-client</option>\n        <option value='work-product'>Work product</option>\n      </select>\n      <button disabled={isSubmitting}>Save entry</button>\n    </form>\n  );\n}",
@@ -581,6 +755,41 @@
       "id": "react-python.agent-ui",
       "title": "Agent UI Streaming",
       "tease": "EventSource cannot send an Authorization header. So how does every agent chat stream tokens?",
+      "primer": {
+        "problem": "A lawyer puts a question to the research agent, an AI assistant that searches documents and drafts answers, and should watch the answer appear word by word, see which searches it ran, click citations into the source document, and approve risky actions before they happen. A plain request-and-wait screen cannot show any of that mid-run.",
+        "picture": "Think of the server as a Kafka producer and the browser as a consumer of one topic per agent run. The server pushes small typed events (token, tool call, citation, approval request, done) down a single long HTTP response in the **SSE** format; unlike Kafka, nothing is stored for replay. The browser reads that response chunk by chunk with `fetch`, splits it into events, and updates the screen per event type. When the agent needs approval it pauses and saves its state; the Approve button resumes that saved run.",
+        "sketch": "browser                              server (Python, LangGraph)\n POST /api/runs  ------------------> start run\n reader.read() <-- data: {token}  <-- model writes text\n               <-- data: {tool_call}\n               <-- data: {citation}\n               <-- data: {interrupt} <-- run paused, state saved\n Approve -> POST resume ----------> same thread_id continues",
+        "terms": [
+          {
+            "term": "Server-Sent Events (SSE)",
+            "def": "A standard way for a server to push a stream of text events to the browser over one long-lived HTTP response."
+          },
+          {
+            "term": "EventSource",
+            "def": "The browser's built-in SSE client; it only makes GET requests and cannot add an Authorization header."
+          },
+          {
+            "term": "token",
+            "def": "A small chunk of model output, roughly a word fragment, streamed one at a time as the model generates text."
+          },
+          {
+            "term": "tool call",
+            "def": "The agent asking to run a function, such as a document search, with arguments; the UI shows it as a step."
+          },
+          {
+            "term": "AbortController",
+            "def": "A browser object whose signal, passed to fetch, lets you cancel the request; it powers the Stop button."
+          },
+          {
+            "term": "interrupt",
+            "def": "LangGraph's call that pauses a run and saves its state under the run's thread_id, so a human can approve before it resumes."
+          },
+          {
+            "term": "LangGraph",
+            "def": "A Python framework that runs an agent as a graph of steps and saves its state after each step under a thread_id."
+          }
+        ]
+      },
       "lesson": {
         "body": "An agent console does four things a CRUD screen never did: stream tokens as they are produced, show the tool calls the agent is making, cite sources, and stop for human approval.\n\n**Transport.** Server-Sent Events (`text/event-stream`) are one-directional, run over plain HTTP and reconnect automatically with a `Last-Event-ID` header, like a Kafka consumer resuming from an offset. The browser `EventSource` API, however, is GET-only and cannot set an `Authorization` header or send a JSON body, so most agent UIs use `fetch` with `POST`, read `response.body.getReader()` and decode with `TextDecoder.decode(value, { stream: true })`, since a chunk can split a multi-byte character or an SSE frame. Buffer until `\\n\\n`, parse `data:` lines, dispatch. An `AbortController` passed to `fetch` is the Stop button and your `unsubscribe`. WebSockets only when the client must talk back mid-stream (voice). On the server this is FastAPI `StreamingResponse` over an async generator fed by LangGraph `astream()` events.\n\n**Events, not strings.** Define a discriminated union: `token`, `tool_call` (name, args), `tool_result`, `citation` (document id, page, span), `interrupt` (approval id, proposed action), `done`, `error`. Tool steps render as a collapsible timeline; citations deep-link into the document viewer at the Bates page. Append tokens to a buffer and flush once per animation frame or inside `startTransition`, otherwise 40 tokens a second means 40 renders a second.\n\n**Human in the loop.** LangGraph's `interrupt()` pauses the graph, the checkpointer persists state under a `thread_id`, and the UI shows Approve and Reject; resuming calls the run endpoint with `Command(resume=decision)` and the same `thread_id`. The Vercel AI SDK `useChat` and the AG-UI protocol standardize these event shapes if you do not want to hand-roll them.\n\nAuthorization lives in retrieval: a citation panel must only show text from documents this user may open, and the UI must never be the only check.",
         "snippet": "type AgentEvent =\n  | { type: 'token'; text: string }\n  | { type: 'tool_call'; id: string; name: string; args: unknown }\n  | { type: 'citation'; docId: string; bates: string; page: number }\n  | { type: 'interrupt'; approvalId: string; action: string }\n  | { type: 'done' } | { type: 'error'; message: string };\n\nasync function streamRun(body: RunRequest, onEvent: (e: AgentEvent) => void, signal: AbortSignal) {\n  const res = await fetch('/api/runs', { method: 'POST', body: JSON.stringify(body), signal,\n    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream',\n               Authorization: `Bearer ${token}` } });                  // EventSource could not do this\n  const reader = res.body!.getReader();\n  const dec = new TextDecoder(); let buf = '';\n  for (;;) {\n    const { value, done } = await reader.read();\n    if (done) break;\n    buf += dec.decode(value, { stream: true });                         // chunk may split a char/frame\n    const frames = buf.split('\\n\\n'); buf = frames.pop()!;             // keep the partial frame\n    for (const f of frames) {\n      const data = f.split('\\n').find(l => l.startsWith('data:'))?.slice(5).trim();\n      if (data) onEvent(JSON.parse(data) as AgentEvent);\n    }\n  }\n}",
@@ -710,6 +919,41 @@
       "id": "react-python.fastapi",
       "title": "FastAPI vs Minimal APIs",
       "tease": "A FastAPI dependency with yield instead of return gets you a scoped DbContext. How?",
+      "primer": {
+        "problem": "The agent backend is written in Python, and you need to build and review its HTTP endpoints the way you would an ASP.NET Core API: routes, input validation, injected database sessions, and responses that never leak internal fields, such as storage keys, to a client's security reviewers.",
+        "picture": "FastAPI is .NET minimal APIs in Python. A decorator like `@app.get('/matters/{id}')` is `MapGet`, and parameters bind by their type hints. **Pydantic** models are DTOs with DataAnnotations built in: they validate incoming JSON and filter outgoing data. **Depends** is constructor injection made explicit per parameter; a dependency that uses `yield` behaves like a scoped service whose `Dispose` runs after the response is sent. uvicorn plays Kestrel.",
+        "sketch": "uvicorn (~Kestrel) -> @app.post('/matters') handler\n  JSON body        -> Pydantic MatterCreate (validate, reject bad input)\n  Depends(get_db)  -> yield session -> handler runs -> cleanup after response\n  returned object  -> response_model=MatterOut (drop undeclared fields) -> JSON",
+        "terms": [
+          {
+            "term": "Pydantic BaseModel",
+            "def": "A Python class whose typed fields validate and convert data, acting as DTO, validation attributes and serializer together."
+          },
+          {
+            "term": "type hint",
+            "def": "An annotation such as id: int stating a value type; FastAPI reads it to decide where and how to bind parameters."
+          },
+          {
+            "term": "Depends",
+            "def": "FastAPI's marker telling it to call a function and inject the result into a handler parameter, once per request."
+          },
+          {
+            "term": "yield",
+            "def": "A keyword that pauses a function and hands back a value; the code after it runs later, here after the response."
+          },
+          {
+            "term": "response_model",
+            "def": "A route setting that serializes the result through a given Pydantic model, dropping any fields that model does not declare."
+          },
+          {
+            "term": "uvicorn",
+            "def": "The ASGI web server process that runs a FastAPI app and handles HTTP connections, the role Kestrel plays in .NET."
+          },
+          {
+            "term": "BackgroundTasks",
+            "def": "Work FastAPI runs inside the same process after sending a response; it is lost if that process restarts."
+          }
+        ]
+      },
       "lesson": {
         "body": "FastAPI (0.149, October 2026) sits on Starlette for HTTP and Pydantic 2.14 for data, served by an ASGI server such as uvicorn, which plays Kestrel. If you know .NET minimal APIs, the shape is familiar: `@app.get('/matters/{id}')` on a function is `app.MapGet('/matters/{id}', handler)`, and parameters bind by type hint. A parameter named in the path is a path parameter, a scalar not in the path becomes a query parameter, and a parameter typed as a Pydantic `BaseModel` is parsed from the JSON body. `APIRouter` is `MapGroup`, `HTTPException(status_code=404)` is `Results.NotFound()`, and OpenAPI is built in at `/openapi.json` with Swagger UI at `/docs`, no Swashbuckle.\n\n**Dependency injection** is explicit: `db: Annotated[AsyncSession, Depends(get_db)]`. A dependency is any callable; FastAPI resolves its own parameters recursively, caches each dependency once per request, and if the function uses `yield` instead of `return`, the code after `yield` runs after the response is sent, which gives you a scoped `DbContext` with disposal. `app.dependency_overrides[get_db] = fake` swaps implementations in tests the way you re-register services with `WebApplicationFactory`. The `lifespan` async context manager replaces hosted-service start and stop.\n\n**Pydantic** is DTO, DataAnnotations and `System.Text.Json` in one class. `BaseModel` fields are validated and coerced by `pydantic-core`, written in Rust; `Field(min_length=3)`, `field_validator`, and `model_config = ConfigDict(extra='forbid')` reject unknown keys. `model_validate` and `model_dump` replace `Deserialize` and `Serialize`. `response_model=MatterOut` filters output to declared fields, so internal columns never leak. `BaseSettings` from the separate `pydantic-settings` package binds environment variables like `IOptions<T>`.\n\nKnow the limits: `BackgroundTasks` run in-process after the response and die with the worker, so durable work goes to SQS or a job queue, and one uvicorn worker is one process with one GIL. `fastapi dev` gives you hot reload; `TestClient` (built on httpx) is your in-memory test host.",
         "snippet": "from contextlib import asynccontextmanager\nfrom typing import Annotated\nfrom fastapi import Depends, FastAPI, HTTPException\nfrom pydantic import BaseModel, ConfigDict, Field\n\nclass MatterCreate(BaseModel):                      # DTO + validation in one\n    model_config = ConfigDict(extra='forbid')       # reject unknown keys\n    title: str = Field(min_length=3, max_length=200); client_id: int\n\n@asynccontextmanager\nasync def lifespan(app: FastAPI):                   # ~ IHostedService start / stop\n    app.state.pool = await make_pool(); yield; await app.state.pool.close()\n\napp = FastAPI(lifespan=lifespan)\n\nasync def get_db():                                 # scoped dependency ~ DbContext per request\n    async with session_factory() as s:\n        yield s                                     # code after yield runs on teardown\n\nDb = Annotated[AsyncSession, Depends(get_db)]\n@app.post('/matters', status_code=201, response_model=MatterOut)   # ~ app.MapPost(...)\nasync def create_matter(body: MatterCreate, db: Db, user: CurrentUser):\n    if not user.can_create: raise HTTPException(403)               # ~ Results.Forbid()\n    return await repo.create(db, body)                              # filtered to MatterOut fields",
@@ -839,6 +1083,41 @@
       "id": "react-python.python-async",
       "title": "Async, Types and Tooling",
       "tease": "One requests.get() inside an async def stalls every user. Why has C# never done this to you?",
+      "primer": {
+        "problem": "An agent service, the backend of an AI assistant, mostly waits on slow things: AI model calls, database searches, downloads. Python can serve many users while waiting, but one wrong call freezes all of them. You need to know how Python concurrency differs from C# Tasks, plus the tools that set up, type-check and test a Python project.",
+        "picture": "C# hands awaiting work back to a thread pool. Python's `asyncio` instead has one **event loop**: a single thread taking turns among coroutines, like one cashier serving many customers who step aside while they wait. `await` is the stepping aside. A call that blocks without awaiting keeps the cashier busy, so everyone waits. Around the code, **uv** is NuGet plus the `dotnet` CLI, `pyproject.toml` is the csproj, and **pytest** is xUnit.",
+        "sketch": "event loop (one thread)\n  request A: await llm call   -> loop serves B and C meanwhile\n  request B: await db query   -> loop serves A and C meanwhile\n  request C: requests.get()   -> BLOCKS the loop: A and B stall too\n  fix: await asyncio.to_thread(blocking_fn)   (~ Task.Run)",
+        "terms": [
+          {
+            "term": "event loop",
+            "def": "The asyncio scheduler that runs one coroutine at a time on one thread, switching whenever the running one awaits."
+          },
+          {
+            "term": "coroutine",
+            "def": "What calling an async def function returns; it does nothing until it is awaited or scheduled as a task."
+          },
+          {
+            "term": "blocking call",
+            "def": "A call that holds the thread until it finishes, such as requests.get, freezing the event loop meanwhile."
+          },
+          {
+            "term": "GIL",
+            "def": "The Global Interpreter Lock: in the standard build only one thread runs Python code at a time, so CPU-heavy work needs processes."
+          },
+          {
+            "term": "virtual environment",
+            "def": "A per-project folder with its own installed packages, so projects do not share or break one global install."
+          },
+          {
+            "term": "uv",
+            "def": "A fast Python tool that creates environments, installs packages, writes a lockfile and installs Python versions."
+          },
+          {
+            "term": "pytest fixture",
+            "def": "A function pytest calls to provide setup, such as a test client, injected into tests by matching parameter name."
+          }
+        ]
+      },
       "lesson": {
         "body": "C# gave you hot `Task`s and a thread pool. Python's `asyncio` is one **event loop per thread** running cooperative coroutines. Calling an `async def` function returns a cold coroutine object that does nothing until you `await` it or schedule it with `asyncio.create_task`. `await` yields control to the loop; `asyncio.gather` is `Task.WhenAll`; `asyncio.TaskGroup` (3.11+) cancels siblings when one fails; `asyncio.Semaphore(8)` caps concurrent LLM calls.\n\nThe trap: a blocking call inside `async def`, such as `requests.get`, a sync database driver or a heavy PDF parse, freezes the loop and every other request with it. Use async libraries (`httpx.AsyncClient`, asyncpg), or push blocking work out with `asyncio.to_thread`, the `Task.Run` equivalent. FastAPI helps: a path operation declared with plain `def` runs in an external threadpool (AnyIO's default limit is 40 threads), so when in doubt use `def`. The **GIL** lets one thread execute Python bytecode at a time, so threads suit I/O and CPU work wants processes; Python 3.14 made the free-threaded build officially supported (PEP 779) but opt-in, and 3.15 shipped on 9 October 2026.\n\n**Type hints** (`list[str]`, `str | None`, `TypedDict`, `Protocol`) are not enforced at runtime; mypy or pyright is your compiler and Pydantic enforces at the boundary.\n\n**Environments.** Python installs packages globally unless you use a virtual environment per project. `uv` (Astral, Rust, 0.13) replaces pip, venv, pyenv and pip-tools: `uv init`, `uv add fastapi`, `uv lock` writes `uv.lock` (your `packages.lock.json`), `uv sync` installs exactly the lockfile (removing extras, including `dev`), `uv sync --locked` fails CI if the lock is stale, `uv run pytest` executes inside the environment, `uv python install 3.13` manages interpreters; `pyproject.toml` is the csproj.\n\n**pytest** (9.x): plain `assert` with introspected failures, fixtures injected by parameter name with `function`, `module` or `session` scope (`IClassFixture`), `conftest.py` for shared fixtures, `@pytest.mark.parametrize` for `[Theory]`/`[InlineData]`, `pytest-asyncio` or anyio for async tests. `ruff` lints and formats.",
         "snippet": "import asyncio, httpx\n\nasync def summarize_all(docs: list[Doc], client: httpx.AsyncClient) -> list[Summary]:\n    sem = asyncio.Semaphore(8)                          # cap concurrent LLM calls\n    async def one(d: Doc) -> Summary:\n        async with sem:\n            r = await client.post(LLM_URL, json={'text': d.text}, timeout=60)\n            return Summary.model_validate(r.json())\n    async with asyncio.TaskGroup() as tg:               # ~ Task.WhenAll, cancels siblings on failure\n        tasks = [tg.create_task(one(d)) for d in docs]\n    return [t.result() for t in tasks]\n\n# text = extract_text(pdf_path)                        # BLOCKS the loop for every request\ntext = await asyncio.to_thread(extract_text, pdf_path)  # ~ Task.Run for blocking / CPU work\n\n# shell, once per project (uv replaces pip + venv + pyenv + pip-tools):\n#   uv init agent-svc && cd agent-svc\n#   uv add fastapi 'langgraph>=1.0' httpx && uv add --dev pytest pytest-asyncio ruff\n#   uv sync --locked        # CI: fail if uv.lock is out of date\n#   uv run pytest -q\n\n@pytest.mark.parametrize('bates,ok', [('ABC000123', True), ('abc', False)])   # ~ [Theory][InlineData]\ndef test_bates(bates: str, ok: bool, client: TestClient):                       # client is a fixture\n    assert (client.post('/entries', json={'bates': bates}).status_code == 201) is ok",
@@ -974,6 +1253,41 @@
       "id": "react-python.agent-code",
       "title": "Reading LangGraph and CrewAI",
       "tease": "A Python decorator is not a C# attribute. Misreading that is how you misread every agent framework.",
+      "primer": {
+        "problem": "Agent frameworks, libraries for AI programs that call a language model in a loop and use tools, such as LangGraph and CrewAI, are written in Python, and their code uses idioms that look like C# but behave differently. You must read it accurately and decide which parts of a client's system belong in Python and which should stay in C#.",
+        "picture": "Read a LangGraph app like an Azure DevOps multi-stage pipeline: named steps (**nodes**), arrows between them (**edges**), some arrows conditional, and a shared state passed along. Each node is a function that takes the state as a dict (Python's `Dictionary`) and returns only the keys it changed; a **reducer** decides whether a change replaces or appends. A **checkpointer** saves state per `thread_id`, so a run can pause for approval and resume later. Unlike a pipeline, edges may loop back to an earlier step.",
+        "sketch": "START -> draft_log -> review --approved--> END\n             ^           |\n             +--rejected-+\n  review calls interrupt(): checkpointer saves state under thread_id\n  invoke(Command(resume=True), same thread_id) continues the run",
+        "terms": [
+          {
+            "term": "decorator",
+            "def": "A function written with @ above another that wraps or replaces it when the module loads; active code, not passive metadata."
+          },
+          {
+            "term": "TypedDict",
+            "def": "A description of a dict's keys and value types used only by the type checker, with no checking at runtime."
+          },
+          {
+            "term": "node",
+            "def": "A step in a LangGraph graph: a function that receives the current state and returns a partial update."
+          },
+          {
+            "term": "reducer",
+            "def": "A rule attached to a state key that says how to merge a node's update, for example appending new messages."
+          },
+          {
+            "term": "checkpointer",
+            "def": "LangGraph's storage that saves graph state after each step under a thread_id, the id of one run, so it can pause and resume."
+          },
+          {
+            "term": "Crew",
+            "def": "CrewAI's container that runs a list of tasks with role-based agents, one after another by default."
+          },
+          {
+            "term": "Annotated",
+            "def": "Python syntax that attaches extra metadata to a type hint; LangGraph reads it to find a state key's reducer, such as add_messages."
+          }
+        ]
+      },
       "lesson": {
         "body": "You will read more agent code than you write at first, so the idioms matter. A **decorator** such as `@tool`, `@agent` or `@listen('draft')` is a function that receives the function below it and returns a replacement, executed at definition time; unlike a C# attribute it is active code, closer to middleware wrapping a handler. **Dicts** carry state everywhere (`state['messages']`); a `TypedDict` declares the shape of such a dict for the type checker with zero runtime validation, a TypeScript interface rather than a Pydantic model. `Annotated[list, add_messages]` attaches metadata to a type; LangGraph reads it as the reducer for that state key, so node updates append instead of overwrite. `@dataclass` generates `__init__`, `__eq__` and `__repr__`, and `frozen=True` makes it a C# record with init-only properties. `with`/`async with` is `using`/`await using`, backed by `__enter__`/`__exit__` or an `@asynccontextmanager` generator. `yield` makes a generator (`IEnumerable` with `yield return`); `**kwargs` is a bag of named arguments.\n\n**LangGraph** (1.2): `StateGraph(State)`, `add_node(name, fn)`, `add_edge(START, 'a')`, `add_conditional_edges`, `compile(checkpointer=...)`. A node takes the state and returns a partial dict update, or a `Command(goto=..., update=...)`. `invoke`/`stream` take `config={'configurable': {'thread_id': ...}}`; `interrupt()` pauses and `Command(resume=...)` continues the same thread. **CrewAI** (1.15, requires Python 3.10 to 3.13): `Agent(role, goal, backstory)`, `Task(description, expected_output, agent)`, `Crew(agents, tasks, process=Process.sequential)`, plus `Flow` classes with `@start`, `@listen` and `@router`.\n\n**The stance.** Orchestrate in Python because that is where LangGraph, CrewAI, the model SDKs, Bedrock AgentCore and the eval tooling land first. Keep business services, ERP integrations and document pipelines in C# where the team and the tests are. The seam is a contract: OpenAPI or JSON Schema shared by Pydantic models and C# records, HTTP or gRPC for request-response, SQS or Kafka for long-running runs. Microsoft's .NET agent stack (Semantic Kernel, Agent Framework) is a legitimate choice for a .NET-only team that accepts ecosystem lag.",
         "snippet": "from typing import Annotated, TypedDict\nfrom langgraph.graph import StateGraph, START, END\nfrom langgraph.graph.message import add_messages\nfrom langgraph.checkpoint.memory import InMemorySaver   # Postgres/Redis saver in production\nfrom langgraph.types import Command, interrupt\n\nclass State(TypedDict):                           # shape of a dict; no runtime check\n    messages: Annotated[list, add_messages]       # Annotated metadata = reducer for this key\n    draft: str\n\ndef draft_log(state: State) -> dict:              # node: takes state, returns a partial update\n    return {'draft': llm.invoke(state['messages']).content}\n\ndef review(state: State) -> Command:\n    approved = interrupt({'draft': state['draft']})   # pause; checkpointer persists; UI resumes\n    return Command(goto=END if approved else 'draft_log')\n\ng = StateGraph(State)\ng.add_node('draft_log', draft_log); g.add_node('review', review)\ng.add_edge(START, 'draft_log'); g.add_edge('draft_log', 'review')\napp = g.compile(checkpointer=InMemorySaver())\ncfg = {'configurable': {'thread_id': 'matter-42'}}\napp.invoke({'messages': [('user', 'Draft the privilege log')]}, cfg)   # runs until interrupt\napp.invoke(Command(resume=True), cfg)             # same thread_id continues the paused run",

@@ -15,6 +15,13 @@ One JSON file per content pack. Several packs may share a `tier.id`; the game me
       "id": "agentic.langgraph",  // <tier.id>.<slug>, unique across all packs
       "title": "LangGraph",       // <= 40 chars
       "tease": "<= 100 chars, shown while the node is locked. Written as a cliffhanger: a question or a surprising claim.",
+      "primer": {
+        // read before the lesson and before the node's first card; builds the mental model so the lesson never lands cold
+        "problem": "25-60 words. The problem this matter exists to solve, in plain words, ideally in client terms. No jargon the learner has not met yet.",
+        "picture": "40-90 words. The core idea as one mental model: an analogy to something the learner knows (C#, .NET, Angular, Azure DevOps, Elasticsearch, Kafka, SQL Server) and how the pieces fit. Inline **bold** and `code` allowed.",
+        "sketch": "optional, <= 12 lines ASCII diagram of the picture. Omit the key if none.",
+        "terms": [ { "term": "ReAct", "def": "8-25 words. One plain sentence defining a term the lesson or cards use." } ]   // 3-7 entries, the words a newcomer would trip on
+      },
       "lesson": {
         "body": "150-300 words. Plain prose, paragraphs separated by a blank line. Inline **bold** and `code` allowed, nothing else. Teach the actual mechanism, not a definition list. Where it helps, map to what the learner already knows: C#, .NET, Angular, Azure DevOps, Elasticsearch, Kafka, SQL Server.",
         "snippet": "optional, <= 24 lines. Real code (Python/HCL/TSX/JSON/bash) or an ASCII diagram. Omit the key if none.",
@@ -60,5 +67,6 @@ Rules
 - `mc` has 3-5 options; `answer` is the index. Distractors must be plausible, never jokes.
 - Facts must be current as of October 2026. Verify anything that changed after 2024 (framework versions, AWS service names, launch dates) with a web search.
 - No filler. Every `why` teaches something.
+- Primers come before the detail: define every term the lesson or cards rely on that a newcomer would not know, unless an earlier node in the same tier already defined it.
 - Cliffhanger teases: "What happens to your DB password when Terraform state leaks?" not "Terraform state basics".
 - Run `node /home/alpi/Documents/Projects/Int-Prep/brian-brennt/content/validate.js <file.json>` until it prints OK.

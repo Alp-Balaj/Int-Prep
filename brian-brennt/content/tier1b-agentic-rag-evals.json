@@ -10,6 +10,41 @@
       "id": "agentic.rag-pipeline",
       "title": "The RAG Pipeline",
       "tease": "Most RAG failures happen before the model sees a single token. Which stage is quietly to blame?",
+      "primer": {
+        "problem": "A law firm holds millions of documents, far more than a language model can read in one request. Lawyers want answers drawn from their own contracts and emails, with a pointer to the exact page, not from whatever the model half-remembers from its training data.",
+        "picture": "Think of it as Elasticsearch sitting in front of a chatbot. **Offline**, like a Kafka consumer, each new document is cut into short passages, each passage becomes a list of numbers that captures its meaning, and both go into an index. **Online**, the question is turned into numbers the same way, the closest passages are fetched, and only those are pasted into the prompt with their ids. The model answers from them and cites the ids; your code then checks every cited id was really sent.",
+        "sketch": "OFFLINE (when a document arrives)     ONLINE (per question)\ndocument -> split into chunks         question -> embed\n         -> embed each chunk                   -> search index -> top chunks\n         -> store in index ------------------> prompt with chunk ids -> LLM\n                                               -> check cited ids -> answer",
+        "terms": [
+          {
+            "term": "RAG (retrieval-augmented generation)",
+            "def": "Fetching relevant passages from your own documents first, then asking the model to answer using only those passages."
+          },
+          {
+            "term": "Chunk",
+            "def": "A short passage, typically a few hundred words, cut from a longer document so it can be searched and quoted on its own."
+          },
+          {
+            "term": "Embedding",
+            "def": "A fixed-length list of numbers a model produces for a piece of text, so texts with similar meaning get similar numbers."
+          },
+          {
+            "term": "Prompt caching",
+            "def": "The provider stores an unchanged prompt opening, such as a whole document set, so repeat requests reusing it cost less and run faster."
+          },
+          {
+            "term": "Contextual retrieval",
+            "def": "Anthropic's technique of adding a short model-written sentence of context to each chunk before it is embedded and keyword-indexed."
+          },
+          {
+            "term": "Context window",
+            "def": "The maximum amount of text, counted in tokens (word pieces), that a model can read in one request."
+          },
+          {
+            "term": "Bedrock Knowledge Bases",
+            "def": "AWS's managed RAG service: it ingests documents from S3 and other sources, chunks and embeds them, and serves search and cited answers."
+          }
+        ]
+      },
       "lesson": {
         "body": "RAG is two pipelines that share one index. The **offline** pipeline runs when documents arrive: parse (PDF text layer, OCR for scans, email headers), chunk, embed each chunk with an embedding model, and write `{chunk_id, doc_id, text, vector, metadata}` into an index. The **online** pipeline runs per question: embed the query with the *same* model, retrieve candidates (vector, lexical or both), optionally rerank, then build a prompt that contains the top chunks with their ids and ask the model to answer *and cite the ids*. Your answer service then checks that every cited id actually exists in the retrieved set before showing it, because models will invent plausible-looking citations.\n\nThink of the offline side as a Kafka consumer that is idempotent on `doc_id` plus content hash, and the index as an Elasticsearch index with a `text` field and a `dense_vector` field side by side. Bedrock Knowledge Bases packages the same stages: a data-source sync does ingest, chunk and embed; `Retrieve` returns chunks (five by default); `RetrieveAndGenerate` adds generation and returns `citations` with `retrievedReferences`. Its prompt template must keep the `$output_format_instructions$` placeholder or citations disappear.\n\nMost quality bugs live in retrieval, not generation. Anthropic's contextual retrieval experiment makes the point: prepending a one-sentence LLM-written context to each chunk before embedding cut top-20 retrieval failures by 35%, adding contextual BM25 took that to 49%, and reranking took it to 67%, for roughly $1.02 per million document tokens with prompt caching. And when the whole corpus is under about 200k tokens (roughly 500 pages), skip RAG entirely: put it in the context window with caching and move on.",
         "snippet": "OFFLINE (per document)              ONLINE (per question)\nS3 drop -> parse / OCR              question -> embed(query)\n        -> chunk (structure-aware)           -> BM25 || kNN   [filter: matter, acl]\n        -> embed(chunk)                      -> RRF fuse -> rerank top 50 -> keep 8\n        -> index {text, vector, meta}        -> prompt with [chunk ids] -> LLM\n                                             -> verify cited ids -> answer + citations\n\nFailure map:\n  wrong chunk ranked 40th ........ retrieval   (fix chunking / hybrid / rerank)\n  clause split across chunks ..... chunking    (fix structure-aware splitting)\n  right chunk present, ignored ... generation  (fix prompt / model / grounding check)\n  doc never indexed .............. ingestion   (fix parser / idempotency / sync)",
@@ -154,6 +189,40 @@
       "id": "agentic.chunking",
       "title": "Chunking Strategies",
       "tease": "A 300-token window cut a contract clause in half. The model confidently cited the wrong party.",
+      "primer": {
+        "problem": "Search by meaning works on short passages, so every contract must be cut into pieces before it is indexed. Cut in the wrong place and a liability clause lands in one piece while its exception lands in the next, so the lawyer is handed half a rule as if it were the whole rule.",
+        "picture": "Picture splitting C# code for review. Cut every 300 lines and a method's signature lands in one file and its body in another; cut at class and method boundaries and each piece makes sense alone. Chunking is that choice for documents; each piece is a **chunk**. **Fixed-size** cuts by length, **semantic** cuts where the topic shifts, **hierarchical** searches small pieces but hands the model their larger parent, and **structure-aware** cuts at Article and Section headings and stamps each piece with its location, like `MSA > Art. 12 > 12.3`.",
+        "terms": [
+          {
+            "term": "Embedding (vector)",
+            "def": "The list of numbers a model produces for one chunk's text, so chunks with similar meaning get similar numbers."
+          },
+          {
+            "term": "Token",
+            "def": "The word-piece unit models count text in; roughly three quarters of an English word on average."
+          },
+          {
+            "term": "Overlap",
+            "def": "Text repeated at the end of one chunk and the start of the next, so a sentence near a cut is not lost."
+          },
+          {
+            "term": "Parent and child chunks",
+            "def": "Small child chunks are searched for precise matches, then each hit is swapped for the larger parent section that contains it."
+          },
+          {
+            "term": "Breadcrumb",
+            "def": "A short path such as `MSA > Art. 12 > 12.3` written into the chunk text so it carries its location."
+          },
+          {
+            "term": "Defined Term",
+            "def": "A capitalised word like 'Fees' whose meaning a contract fixes once, usually in Article 1, and then uses everywhere."
+          },
+          {
+            "term": "Bedrock Knowledge Bases",
+            "def": "AWS's managed service that chunks, embeds and indexes documents from S3 and offers several built-in chunking strategies."
+          }
+        ]
+      },
       "lesson": {
         "body": "Chunking decides what a vector can ever mean. **Fixed-size** splits on a token budget with an overlap percentage; Bedrock's default is about 300 tokens, respecting sentence boundaries. It is cheap and predictable, and it happily puts 'the Supplier shall indemnify the Customer...' in one chunk and the carve-out 'except where caused by Customer's negligence' in the next, so the retriever returns an obligation without its exception.\n\n**Hierarchical** (parent/child) chunking embeds small child chunks for precise matching, then at retrieval replaces each hit with its larger parent so the model sees surrounding context. In Bedrock you set parent and child max tokens plus an *absolute* overlap token count, and because children collapse into parents you can get fewer results than `numberOfResults`. AWS advises against it on S3 Vectors when combined sizes pass about 8,000 tokens, because of per-vector metadata limits.\n\n**Semantic** chunking embeds each sentence with a buffer of neighbours and breaks where dissimilarity crosses a breakpoint percentile threshold. Boundaries follow topic shifts, but it costs foundation-model calls at ingest.\n\n**Structure-aware** chunking uses the document's own skeleton. Legal text is a tree: Article, Section, sub-clause (a)(i), a Definitions section whose capitalised terms are referenced everywhere, schedules and exhibits, email threads with headers. Split at those boundaries, prepend a breadcrumb such as `MSA v3 > Art. 12 Liability > 12.3(b)` to the chunk text, and store section, page and defined-term metadata. Lawyers then get the clause they asked about together with the one it modifies, and citations that point to a page. Bedrock attaches full-page or full-table context to chunks from parsed markdown when that context is 10,000 characters or less; for anything beyond that, choose no chunking and split in a custom transformation Lambda, where your own parser knows what a clause is.",
         "snippet": "import re\nHEADING = re.compile(r'^(ARTICLE|Article|Section|SCHEDULE)\\s+[\\dIVX]+[.\\d()a-z]*', re.M)\n\ndef chunk_legal(doc_id: str, text: str, max_tokens: int = 400):\n    bounds = [m.start() for m in HEADING.finditer(text)] + [len(text)]\n    crumbs: list[str] = []\n    for start, end in zip(bounds, bounds[1:]):\n        section = text[start:end].strip()\n        heading = section.splitlines()[0]\n        depth = heading.count('.') + 1          # 12 -> 1, 12.3 -> 2\n        crumbs = crumbs[:depth - 1] + [heading]\n        breadcrumb = ' > '.join(crumbs)\n        for piece in split_on_sentences(section, max_tokens):\n            yield {\n                'doc_id': doc_id,\n                'section': heading,\n                'text': f'[{breadcrumb}]\\n{piece}',   # breadcrumb is embedded too\n                'parent_id': f'{doc_id}#{crumbs[0]}',  # for small-to-big retrieval\n            }",
@@ -285,6 +354,41 @@
       "id": "agentic.hybrid-search",
       "title": "Hybrid Search and RRF",
       "tease": "Your vector index can't find 'Section 12.3(b)'. Your old BM25 index can. Why not use both?",
+      "primer": {
+        "problem": "Lawyers search in two ways. Sometimes they type an exact identifier like a Bates number or 'Section 12.3(b)'; sometimes they describe an idea in their own words, like 'can we walk away without penalty'. Keyword search nails the first and misses the second, meaning-based search does the opposite, so you need both merged into one list.",
+        "picture": "You already know half: Elasticsearch BM25 matches words. Add a second query on a `dense_vector` field that finds passages close in meaning even with no shared words. Now you have two ranked lists whose scores are in different units, like adding kilometres to kilograms. **Reciprocal rank fusion** ignores scores and uses positions only: each passage earns `1/(60 + rank)` from every list it appears in, and the totals set the final order. OpenSearch, the open-source Elasticsearch fork that AWS started, offers the same idea.",
+        "sketch": "question --+--> BM25 query  --> list A: #1 doc7, #2 doc3, ...\n           +--> kNN query   --> list B: #1 doc3, #2 doc9, ...\n                                   |\n            RRF: score = sum of 1/(60 + rank) per list\n                                   v\n                    fused list: doc3, doc7, doc9, ...",
+        "terms": [
+          {
+            "term": "BM25",
+            "def": "Elasticsearch's default keyword-scoring formula; its scores have no fixed upper limit and depend on the whole collection."
+          },
+          {
+            "term": "Embedding (dense vector)",
+            "def": "A list of numbers a model produces for a text so that texts with similar meaning sit close together."
+          },
+          {
+            "term": "kNN search",
+            "def": "Finding the k stored vectors nearest the query's vector, usually through an approximate graph index called HNSW."
+          },
+          {
+            "term": "Cosine similarity",
+            "def": "A closeness score between two vectors that always falls between -1 and 1, with 1 meaning same direction."
+          },
+          {
+            "term": "Score normalization",
+            "def": "The alternative to RRF: rescale each list's scores to a common range such as 0 to 1, then combine them with tuned weights."
+          },
+          {
+            "term": "Bates number",
+            "def": "A unique identifier like PRIV-0002931 stamped on every page produced in litigation, so each page can be referenced exactly."
+          },
+          {
+            "term": "NDCG@10",
+            "def": "A score from 0 to 1 for how well the top ten results put the most relevant documents first."
+          }
+        ]
+      },
       "lesson": {
         "body": "Lexical and dense retrieval fail differently. BM25 is unbeatable on exact tokens: Bates numbers like `PRIV-0002931`, case numbers, defined terms, 'Section 12.3(b)'. Dense vectors win when the lawyer paraphrases: 'can we walk away without penalty' should find 'termination for convenience'. Hybrid search runs both and merges.\n\nYou cannot add the scores. BM25 is unbounded and corpus-dependent; cosine lives in [-1, 1]. **Reciprocal rank fusion** sidesteps scale entirely: each document scores `sum(1 / (k + rank_i))` over the result lists it appears in, with `k = 60` from Cormack, Clarke and Buettcher (2009). A document ranked 1st in one list and 3rd in the other gets 1/61 + 1/63; a document that appears in only one list needs a very high rank to compete. No tuning, no calibration.\n\nIn Elasticsearch this is the `rrf` retriever wrapping child retrievers, typically a `standard` (BM25) retriever and a `knn` retriever. `rank_constant` defaults to 60 and `rank_window_size` to 10; the window must be at least `size`, and widening it to 50 or 100 improves recall at some CPU cost. Retrievers and RRF went GA together in 8.16, for Enterprise-licensed clusters. A `filter` inside the `knn` clause is applied as a pre-filter during HNSW traversal, so you still get k matching documents. OpenSearch offers the `hybrid` query with a search pipeline: the `normalization-processor` (min_max or l2 normalization; arithmetic, geometric or harmonic mean; per-clause weights) or, since 2.19, the `score-ranker-processor` with `technique: rrf`. OpenSearch's own BEIR benchmark found RRF about 3.86% lower NDCG@10 than a tuned score-normalization pipeline, which is the trade: RRF is the robust default, weighted normalization is what you tune once you have relevance judgments.\n\nYour Elasticsearch background is the edge here. Analyzers, synonyms for legal abbreviations, `match_phrase` for quoted clauses, and `semantic_text` with ELSER as a third sparse signal all still matter inside a RAG system.",
         "snippet": "GET matters-acme-00123/_search\n{\n  \"size\": 8,\n  \"retriever\": {\n    \"rrf\": {\n      \"rank_constant\": 60,\n      \"rank_window_size\": 50,\n      \"retrievers\": [\n        { \"standard\": { \"query\": { \"bool\": {\n            \"must\":   { \"match\": { \"text\": \"termination for convenience notice period\" } },\n            \"filter\": [ { \"term\": { \"matter_id\": \"acme-00123\" } },\n                        { \"term\": { \"privileged\": false } } ] } } } },\n        { \"knn\": {\n            \"field\": \"vector\", \"k\": 50, \"num_candidates\": 200,\n            \"query_vector_builder\": { \"text_embedding\": {\n                \"model_id\": \"titan-v2\", \"model_text\": \"can we exit without penalty\" } },\n            \"filter\": [ { \"term\": { \"matter_id\": \"acme-00123\" } },\n                        { \"term\": { \"privileged\": false } } ] } }\n      ]\n    }\n  }\n}",
@@ -433,6 +537,41 @@
       "id": "agentic.rerank-acl",
       "title": "Rerankers and Permission Filters",
       "tease": "The reranker scored it 0.97. The associate wasn't cleared to see it. Which check runs first?",
+      "primer": {
+        "problem": "Two things go wrong at the top of search results. The best passage is often in the top 50 but not the top 5, so the model reads near-misses. Worse, a passage from a matter the lawyer is walled off from can surface, and once it reaches the model no instruction reliably keeps it out.",
+        "picture": "Two gates in a fixed order. First a **permission filter**, built on the server from who the user is, goes inside the search query itself, exactly like a C# authorization handler appending `WHERE matter_id IN (...)` or SQL Server row-level security: forbidden documents are never even looked at. Then, on the 50 or so permitted results, a **reranker** reads the question and each passage together and re-scores them, and you keep the best 5 to 10. Fast search finds candidates; a slow, careful reader picks the winners.",
+        "sketch": "user identity -> entitlement service -> allowed matter ids\n                                            |\nquestion -> keyword + vector search, filter INSIDE ->  top 50 permitted\n         -> reranker reads (question, passage) pairs -> keep top 8\n         -> prompt -> model",
+        "terms": [
+          {
+            "term": "Bi-encoder",
+            "def": "A model that embeds query and document separately, so document vectors can be computed ahead of time and searched fast."
+          },
+          {
+            "term": "Cross-encoder reranker",
+            "def": "A model that reads the question and one passage together and outputs a relevance score; accurate but too slow for millions."
+          },
+          {
+            "term": "Ethical wall",
+            "def": "A firm's rule that certain lawyers must not see a given matter's documents, usually because of a conflict of interest."
+          },
+          {
+            "term": "Entitlement service",
+            "def": "The system of record that says which matters and clients a given user is allowed to see."
+          },
+          {
+            "term": "Pre-filter",
+            "def": "A restriction applied during the search itself, so only permitted documents are considered and you still get k results."
+          },
+          {
+            "term": "Post-filter",
+            "def": "A restriction applied after the top results are chosen; it can leave few or no results and is not a security boundary."
+          },
+          {
+            "term": "Privileged document",
+            "def": "A lawyer-client communication protected from disclosure, flagged in metadata so search can exclude it."
+          }
+        ]
+      },
       "lesson": {
         "body": "Retrieval is two stages because the cheap stage is wrong at the top. A bi-encoder scores query and document independently, so document vectors can be precomputed and searched in milliseconds, but the model never sees query and passage together. A **cross-encoder reranker** reads the pair `(query, passage)` jointly and emits a relevance score. It cannot be precomputed, so you run it on the top 50-100 candidates from hybrid search and keep the best 5-10 for the prompt. Fewer, better chunks means a shorter prompt and a cheaper, more faithful answer.\n\nOn AWS the `Rerank` API in `bedrock-agent-runtime` serves `cohere.rerank-v3-5:0` and `amazon.rerank-v1:0` (the Amazon model is not offered in us-east-1), and Knowledge Bases accepts a `rerankingConfiguration` on `Retrieve`. Elasticsearch has the `text_similarity_reranker` retriever, defaulting to the built-in `.rerank-v1-elasticsearch` endpoint with `rank_window_size` 10, and it can call Cohere or Vertex rerank endpoints instead.\n\n**Metadata filters are the security boundary.** Every chunk carries `client_id`, `matter_id`, `custodian`, `doc_date` and privilege flags. The filter is derived server-side from the authenticated user's entitlements and pushed into the retrieval query, exactly as a C# authorization handler appends `WHERE tenant_id = @tenant` to every query, or as SQL Server row-level security does. In Elasticsearch, document level security turns a role query into a cached BitSet so kNN only traverses permitted documents, and a `filter` inside `knn` is a pre-filter. In OpenSearch, efficient filtering requires the lucene or faiss engine (nmslib post-filters and is deprecated), which is why Bedrock Knowledge Bases requires `faiss` for metadata filtering. Bedrock filters come from `<file>.<ext>.metadata.json` sidecars and use `equals`, `in`, `greaterThan` and friends, combined with `andAll`/`orAll`, up to five per group.\n\nPost-filtering is a trap: retrieve k=10, then drop forbidden documents, and you return three results or none, having already looked at documents the user may not see. The model is never the gate; the query is.",
         "snippet": "GET matters-*/_search\n{\n  \"retriever\": {\n    \"text_similarity_reranker\": {\n      \"inference_id\": \"cohere-rerank-3-5\",\n      \"inference_text\": \"notice period for termination for convenience\",\n      \"field\": \"text\",\n      \"rank_window_size\": 50,\n      \"retriever\": {\n        \"rrf\": {\n          \"rank_window_size\": 50,\n          \"retrievers\": [\n            { \"standard\": { \"query\": { \"match\": { \"text\": \"termination convenience notice\" } } } },\n            { \"knn\": { \"field\": \"vector\", \"k\": 50, \"num_candidates\": 200,\n                       \"query_vector\": \"<query embedding>\" } }\n          ]\n        }\n      },\n      \"filter\": { \"bool\": { \"filter\": [\n        { \"terms\": { \"matter_id\": \"<from entitlement service, never the request body>\" } },\n        { \"term\":  { \"privileged\": false } } ] } }\n    }\n  }\n}",
@@ -582,6 +721,40 @@
       "id": "agentic.embeddings",
       "title": "Embedding Models",
       "tease": "You upgraded the embedding model on Friday. By Monday half of search returned garbage. What broke?",
+      "primer": {
+        "problem": "Search by meaning needs every passage turned into numbers a computer can compare. At millions of passages those numbers cost serious memory, and they only make sense next to numbers from the same model, so a quiet model upgrade can make search return confident garbage without a single error.",
+        "picture": "Think of an embedding model as a function `float[] Embed(string text)` that always returns an array of the same length, built so texts with similar meaning get nearby arrays. Each model has its own coordinate system, like two maps with different origins: a point from model A means nothing on model B's map, even if both arrays have 1,024 numbers. You store the arrays in an Elasticsearch `dense_vector` field, and you treat a model change like a mapping change: new index, test it, flip the alias.",
+        "terms": [
+          {
+            "term": "Embedding",
+            "def": "The fixed-length array of numbers a model produces for a piece of text, positioned so similar meanings sit close together."
+          },
+          {
+            "term": "Dimensions",
+            "def": "How many numbers each embedding holds, such as 1,024; more dimensions cost more memory per stored vector."
+          },
+          {
+            "term": "Quantization",
+            "def": "Storing each vector's numbers in fewer bits, such as 1 byte or even 1 bit instead of 4 bytes, trading a little accuracy for memory."
+          },
+          {
+            "term": "HNSW",
+            "def": "A graph index that links each vector to its near neighbours so nearest-match search skips most of the collection."
+          },
+          {
+            "term": "Token",
+            "def": "The word-piece unit models read and count text in; input limits like 8,192 tokens are measured in these."
+          },
+          {
+            "term": "Blue/green reindex",
+            "def": "Building a complete new index beside the live one, testing it, then switching traffic over in one step."
+          },
+          {
+            "term": "Golden set",
+            "def": "A fixed list of real questions with known correct passages and answers, used to measure search quality before and after changes."
+          }
+        ]
+      },
       "lesson": {
         "body": "An embedding model maps text to a fixed-length vector so that nearby vectors mean similar things. Query and documents must be embedded by the same model and version; vectors from different models live in unrelated spaces, so a mixed index returns confident nonsense. That one fact drives most of the operations.\n\nKnow the shapes. Amazon Titan Text Embeddings V2 (`amazon.titan-embed-text-v2:0`) takes up to 8,192 tokens or 50,000 characters and outputs 1,024 dimensions by default, with 512 and 256 available; AWS reports about 99% of retrieval accuracy retained at 512 and 97% at 256. Cohere Embed v4 defaults to 1,536 dimensions (256/512/1024/1536 selectable), accepts 128k tokens, and embeds images and PDFs as well as text. OpenAI's text-embedding-3-large is 3,072 dimensions. Inputs longer than the limit get truncated or rejected depending on the SDK, so chunk before you embed.\n\nDimensions cost memory. One float32 1,024-dim vector is 4 KB; 2 million documents at five chunks each is 10 million vectors, about 40 GB raw before the HNSW graph. Quantization is how production survives: Elasticsearch has indexed float vectors as `int8_hnsw` by default since 8.14 (4x smaller), switched the default to `bbq_hnsw` for 384+ dimensions in 9.1 (around 32x), and added `bbq_disk` in 9.2, which becomes the default under an Enterprise licence in 9.4. HNSW defaults are `m: 16` and `ef_construction: 100`, and a `dense_vector` field caps at 4,096 dimensions.\n\nRe-embed when the model, its version or the chunking changes, never because one document changed; a changed document re-embeds only its own chunks. Treat a model change as a blue/green reindex: build the new index alongside the old one, embed queries with the new model only against the new index, run the golden set on both, then flip an alias, the same way you would roll an Elasticsearch mapping change.",
         "snippet": "PUT matters-acme-00123-v2\n{\n  \"mappings\": {\n    \"properties\": {\n      \"text\":       { \"type\": \"text\", \"analyzer\": \"english\" },\n      \"matter_id\":  { \"type\": \"keyword\" },\n      \"privileged\": { \"type\": \"boolean\" },\n      \"doc_date\":   { \"type\": \"date\" },\n      \"section\":    { \"type\": \"keyword\" },\n      \"embed_model\": { \"type\": \"keyword\" },        // e.g. titan-embed-text-v2:0/1024\n      \"vector\": {\n        \"type\": \"dense_vector\",\n        \"dims\": 1024,\n        \"similarity\": \"cosine\",\n        \"index_options\": { \"type\": \"bbq_hnsw\", \"m\": 16, \"ef_construction\": 100 }\n      }\n    }\n  }\n}\n\n// cut-over after the golden set passes on v2:\nPOST _aliases\n{ \"actions\": [ { \"remove\": { \"index\": \"matters-acme-00123-v1\", \"alias\": \"matters-acme-00123\" } },\n               { \"add\":    { \"index\": \"matters-acme-00123-v2\", \"alias\": \"matters-acme-00123\" } } ] }",
@@ -707,6 +880,41 @@
       "id": "agentic.rag-evals",
       "title": "Evaluating RAG",
       "tease": "The demo looked perfect. The golden set said 61% faithful. Which one do you believe?",
+      "primer": {
+        "problem": "A demo shows the five questions that worked. Before a firm trusts the assistant with client work, you need a number: how often is it right, and when it is wrong, did search fetch the wrong passages or did the model misuse the right ones? Without that split you fix the wrong thing.",
+        "picture": "Treat it like a test suite in an Azure DevOps pipeline. The **golden set** is the fixtures: real lawyer questions, each with the correct passages and a short reference answer. Search is tested like a plain function: did a correct passage come back in the top k? An answer can't be checked with `Assert.AreEqual`, so a second model, the **judge**, grades it against a rubric. Run both on every change and fail the build on regressions. The judge has its own biases, so compare it with lawyers' grades first.",
+        "sketch": "golden question --> your pipeline --> retrieved chunks --> answer\n                                          |                  |\n      known correct chunks ---> recall@k  |                  |\n                                (no model)  +--> judge model --+--> faithfulness,\n                                                                  relevancy",
+        "terms": [
+          {
+            "term": "recall@k",
+            "def": "The share of questions where at least one known-correct passage appears in the top k search results."
+          },
+          {
+            "term": "RAGAS",
+            "def": "An open-source Python library that scores RAG answers using a judge model, with metrics such as faithfulness and relevancy."
+          },
+          {
+            "term": "Faithfulness",
+            "def": "The share of claims in an answer that the retrieved passages actually support, from 0 to 1."
+          },
+          {
+            "term": "Response relevancy",
+            "def": "How directly the answer addresses the question asked, regardless of whether its facts are correct."
+          },
+          {
+            "term": "Context recall",
+            "def": "Whether the retrieved passages contain what is needed to support the reference answer; it needs a written reference answer."
+          },
+          {
+            "term": "LLM-as-a-judge",
+            "def": "Using a model to grade another model's output; it tends to favour the first answer shown, longer answers and its own style."
+          },
+          {
+            "term": "Pointwise vs pairwise judging",
+            "def": "Pointwise grades one answer against a rubric; pairwise asks which of two answers is better, which invites position bias."
+          }
+        ]
+      },
       "lesson": {
         "body": "You cannot improve what you only measure with a demo. A RAG evaluation separates the two things that can fail. **Retrieval** is scored against labelled relevant chunks with plain IR metrics: recall@k (did a relevant chunk appear in the top k), precision@k, MRR, nDCG. No LLM is involved, so it is fast, cheap and deterministic, and it tells you whether to fix chunking and search or the prompt. **Generation** is scored on the chunks the system actually retrieved.\n\nRAGAS names the standard generation metrics (in the current `ragas.metrics.collections` API: `Faithfulness`, `AnswerRelevancy`, `ContextPrecision`, `ContextRecall`; the older `ragas.metrics` classes such as `ResponseRelevancy` still work but are slated for removal). *Faithfulness* decomposes the answer into claims and asks a judge whether each is supported by the retrieved context; the score is supported claims over total claims, 0 to 1. *Response relevancy* has the judge write N questions (default 3) that the answer would answer, embeds them, and averages cosine similarity to the real question, so padding and evasion score low. *Context precision* checks that relevant chunks rank above irrelevant ones; *context recall* needs a reference answer and checks whether the retrieved context could support it.\n\nThe judge is itself a model and inherits the biases documented by Zheng et al. (2023): position bias (prefers the first candidate), verbosity bias (longer looks better), self-preference (prefers its own family's style). Mitigate with pointwise rubrics instead of pairwise comparison, swapped orderings when you must compare, a judge from a different model family than the generator, and calibration: have lawyers grade 50-100 items and report agreement with the judge before you trust its numbers.\n\nThe **golden set** is the asset. Start with 100-200 questions written by the people who will use the system, stratified by type: single-clause lookup, cross-document synthesis, date arithmetic, and unanswerable questions where the right answer is 'not in these documents'. Version it, run it in CI on every prompt or index change, gate deploys on regressions, and feed every production failure back into it.",
         "snippet": "from ragas import evaluate, EvaluationDataset\n# legacy metric classes: still supported, deprecated in ragas 0.4, removed in 1.0.\n# new code: from ragas.metrics.collections import Faithfulness, AnswerRelevancy, ContextRecall, ContextPrecision\nfrom ragas.metrics import Faithfulness, ResponseRelevancy, LLMContextRecall, LLMContextPrecisionWithReference\n\n# one row per golden question; retrieved_contexts come from YOUR pipeline, not hand-picked\nrows = [{\n    \"user_input\": \"Does the liability cap apply to confidentiality breaches?\",\n    \"retrieved_contexts\": [c.text for c in pipeline.retrieve(q, user=test_lawyer)],\n    \"response\": pipeline.answer(q, user=test_lawyer).text,\n    \"reference\": \"No. Section 12.3 excludes breaches of Section 9 from the cap.\",\n} for q in golden_set]\n\nresult = evaluate(\n    EvaluationDataset.from_list(rows),\n    metrics=[Faithfulness(), ResponseRelevancy(), LLMContextRecall(), LLMContextPrecisionWithReference()],\n    llm=judge_llm,            # a different model family than the generator\n    embeddings=judge_embeddings,\n)\ndf = result.to_pandas()\nassert df[\"faithfulness\"].mean() >= BASELINE_FAITHFULNESS - 0.02   # CI gate\nassert df[\"context_recall\"].mean() >= BASELINE_RECALL - 0.02",
@@ -855,6 +1063,41 @@
       "id": "agentic.observability",
       "title": "Tracing Agents",
       "tease": "A $4,000 Bedrock bill from one weekend. Which tool call looped? Without traces you will never know.",
+      "primer": {
+        "problem": "An agent answers one question by calling search, the model and other tools, sometimes dozens of times. When an answer is wrong or a weekend bill hits $4,000, you need to see which step did what, how long it took and how many tokens it used, without copying privileged client text into a logging system.",
+        "picture": "It is distributed tracing, the correlation-id idea you know from Application Insights, applied to an agent. One user request is the root **span**; each retrieval, model call and tool call is a child span carrying timings, token counts and ids. The tree tells you whether the filter excluded the right matter or a tool looped 40 times. **OpenTelemetry** supplies the standard attribute names, such as `gen_ai.usage.input_tokens`, and a backend such as LangSmith or CloudWatch (AWS's monitoring service) stores the trees and draws them.",
+        "sketch": "rag.answer (root span, 3.2 s)\n|-- retrieve opensearch   180 ms   chunk_ids=[...]  filter=[matters]\n|-- rerank                 90 ms\n|-- chat claude          2.8 s    in=6,100 tok  out=420 tok\n`-- tool: fetch_doc       120 ms",
+        "terms": [
+          {
+            "term": "Trace",
+            "def": "The full record of one request as a tree of timed steps, linked by a shared trace id."
+          },
+          {
+            "term": "Span",
+            "def": "One timed step inside a trace, such as a single model call, with attributes like tokens used and latency."
+          },
+          {
+            "term": "Token",
+            "def": "The word-piece unit models read and write; providers bill per input and output token, so tokens equal cost."
+          },
+          {
+            "term": "OpenTelemetry",
+            "def": "The vendor-neutral open standard and SDKs for emitting traces, metrics and logs to any monitoring backend."
+          },
+          {
+            "term": "GenAI semantic conventions",
+            "def": "OpenTelemetry's agreed attribute names for model calls, like gen_ai.request.model; still at Development status, not Stable, so names can change."
+          },
+          {
+            "term": "LangSmith",
+            "def": "LangChain's hosted tracing and evaluation service that shows each agent run as a browsable tree."
+          },
+          {
+            "term": "AgentCore Observability",
+            "def": "AWS's agent tracing view inside CloudWatch, which accepts OpenTelemetry spans from agents hosted anywhere."
+          }
+        ]
+      },
       "lesson": {
         "body": "An agent run is a tree, and a trace is that tree with timings and payloads. The root span is the user request; children are retrieval (query text, filters, k, latency, returned chunk ids), rerank, each LLM call (model, input and output tokens, finish reason, latency) and each tool call. With that, 'why was this answer wrong' becomes 'the filter excluded the right matter' or 'the model ignored chunk 4', and 'why did the bill triple' becomes 'this tool looped 40 times per session'. It is the same discipline as correlation ids across services in Application Insights, applied to tokens.\n\nThe vendor-neutral vocabulary is the OpenTelemetry GenAI semantic conventions: `gen_ai.operation.name`, `gen_ai.provider.name` (which replaced `gen_ai.system`), `gen_ai.request.model`, `gen_ai.response.model`, `gen_ai.usage.input_tokens` and `gen_ai.usage.output_tokens`, with span names like `chat anthropic.claude-...`. They are still at Development stability, and in 2026 they moved out of the core semantic-conventions repository into a dedicated `semantic-conventions-genai` repository that had no tagged release as of autumn 2026, so pin instrumentation versions and expect renames. Prompt and completion text is opt-in through `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`, which matters enormously when prompts contain privileged documents: keep it off by default and decide deliberately where that text may be stored and for how long.\n\n**LangSmith** needs `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY` and `LANGSMITH_PROJECT`; decorate functions with `@traceable` or wrap the model client, and it also ingests OTel; EU tenants use `eu.api.smith.langchain.com`. Its datasets and `evaluate()` tie traces to the golden set. **AgentCore Observability** (GA 13 October 2025) renders agent traces in the CloudWatch GenAI Observability page after a one-time enable of CloudWatch Transaction Search; agents on AgentCore Runtime are auto-instrumented, others ship spans via the ADOT SDK to CloudWatch's OTLP endpoint with SigV4, so an ECS-hosted agent lands in the same dashboards. Emit cost per answer as a metric and alert on span count per session.",
         "snippet": "from opentelemetry import trace\ntracer = trace.get_tracer(\"legal-assistant\")\n\ndef answer(question: str, user: User) -> Answer:\n    with tracer.start_as_current_span(\"rag.answer\") as root:\n        root.set_attribute(\"app.matter_ids\", user.permitted_matters)   # the filter actually used\n        root.set_attribute(\"enduser.id\", user.id)\n\n        with tracer.start_as_current_span(\"retrieve opensearch\") as s:\n            s.set_attribute(\"gen_ai.operation.name\", \"retrieve\")\n            hits = search(question, filter=user.permitted_matters, k=50)\n            s.set_attribute(\"app.chunk_ids\", [h.id for h in hits])       # ids only, never text\n\n        with tracer.start_as_current_span(\"chat anthropic.claude\") as s:\n            s.set_attribute(\"gen_ai.operation.name\", \"chat\")\n            s.set_attribute(\"gen_ai.provider.name\", \"aws.bedrock\")\n            s.set_attribute(\"gen_ai.request.model\", MODEL_ID)\n            resp = bedrock_chat(prompt(question, hits[:8]))\n            s.set_attribute(\"gen_ai.usage.input_tokens\", resp.usage.input_tokens)\n            s.set_attribute(\"gen_ai.usage.output_tokens\", resp.usage.output_tokens)\n            s.set_attribute(\"gen_ai.response.finish_reasons\", [resp.stop_reason])\n        # content capture stays off: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT unset\n        return resp",
@@ -977,6 +1220,41 @@
       "id": "agentic.guardrails",
       "title": "Guardrails and Approval Gates",
       "tease": "The model 'approved' a settlement letter and sent it. Nobody asked a human. Where was the gate?",
+      "primer": {
+        "problem": "An agent can draft a letter, fill a privilege log or send an email. Models sometimes invent facts or take an action nobody approved, and a wrong letter sent to a client or filed with a court cannot be taken back. You need checks around the model that do not depend on the model behaving.",
+        "picture": "Treat the model as an untrusted API client. **Input checks** screen what goes in. **Output checks** validate what comes out, the way ASP.NET model binding plus FluentValidation rejects a bad request body, and a **grounding check** tests whether each claim is backed by the source passages. For anything irreversible, an **approval gate** works like a manual approval on an Azure DevOps environment: the workflow saves state, stops, and resumes only when a named human approves. None of these decide who may see a document; the search filter does that.",
+        "sketch": "request -> input checks -> model drafts structured output\n        -> schema validation -> grounding check vs retrieved chunks\n        -> irreversible action?  no  -> do it\n                                 yes -> save state, notify approver, STOP\n                                        human approves -> resume",
+        "terms": [
+          {
+            "term": "Prompt injection",
+            "def": "Instructions hidden in a document or input that try to make the model ignore its real instructions."
+          },
+          {
+            "term": "Structured output",
+            "def": "Asking the model to answer as JSON matching a schema, so your code can validate fields before acting on them."
+          },
+          {
+            "term": "Amazon Bedrock Guardrails",
+            "def": "AWS's managed checks, such as content filters, denied topics, PII masking and grounding; its ApplyGuardrail API screens any model's text."
+          },
+          {
+            "term": "Contextual grounding check",
+            "def": "A score of whether every claim in an answer is supported by the source passages, and whether it answers the question."
+          },
+          {
+            "term": "Automated Reasoning checks",
+            "def": "A Bedrock Guardrails feature that turns a written policy into formal logic and proves a statement valid or invalid."
+          },
+          {
+            "term": "PII",
+            "def": "Personally identifiable information, such as names, addresses or account numbers, that must be masked or blocked."
+          },
+          {
+            "term": "Privilege log",
+            "def": "The list a party must hand over describing each document it withholds as privileged: date, author, recipients and basis."
+          }
+        ]
+      },
       "lesson": {
         "body": "Guardrails are layers, and none of them is the retrieval filter. **Input validation**: schema and length checks, allow-listed tools, prompt-injection detection on anything that came from a document rather than the user. **Output validation**: request structured output against a JSON schema and validate it server-side, the way ASP.NET model binding plus FluentValidation treats a request body; never let free text drive a side effect. **Human approval gates**: any irreversible or expensive action (send to a client, file with a court, delete, spend above a threshold) pauses the workflow, persists state, and resumes only on an explicit approval, like a manual approval on an Azure DevOps environment. An agent that 'asks itself' for permission has no gate.\n\n**Amazon Bedrock Guardrails** adds managed policies you attach to Converse/Invoke or call directly through `ApplyGuardrail`, which works with any model including self-hosted ones. Policies: content filters (Hate, Insults, Sexual, Violence, Misconduct, Prompt Attack, each with a strength), denied topics, word filters, sensitive information filters (PII entities or regex; block or mask), **contextual grounding checks**, and **Automated Reasoning checks** (GA 6 August 2025), which compile a written policy into formal logic and prove or refute statements instead of estimating a confidence. Grounding checks score grounding (is every claim supported by the source) and relevance (does it answer the query) against thresholds from 0 to 0.99; they run on the output only, and cap at 100,000 characters of source, 1,000 of query and 5,000 of response. With `ApplyGuardrail` you tag content blocks with `qualifiers`: `grounding_source` for the retrieved passages, `query`, and an unqualified or `guard_content` block for the answer. Billing is per policy per 1,000 text units of up to 1,000 characters each: content filters and denied topics $0.15, PII filters and grounding checks $0.10, Automated Reasoning $0.17 per policy; regex and word filters are free.\n\nWhat guardrails do not do: decide who may see a document. A denied topic is not an ethical wall; that remains the retrieval-time permission filter.",
         "snippet": "resp = bedrock_runtime.apply_guardrail(\n    guardrailIdentifier=GUARDRAIL_ID, guardrailVersion=\"3\",\n    source=\"OUTPUT\",                      # grounding checks only run on output\n    content=[\n        {\"text\": {\"text\": \"\\n\\n\".join(c.text for c in retrieved_chunks),\n                  \"qualifiers\": [\"grounding_source\"]}},     # <= 100,000 chars\n        {\"text\": {\"text\": question, \"qualifiers\": [\"query\"]}},  # <= 1,000 chars\n        {\"text\": {\"text\": draft_answer}},                      # content to guard, <= 5,000\n    ],\n)\nif resp[\"action\"] == \"GUARDRAIL_INTERVENED\":\n    # inspect resp[\"assessments\"][0][\"contextualGroundingPolicy\"][\"filters\"]\n    # each filter has type GROUNDING | RELEVANCE, score, threshold, action\n    return abstain(\"I could not ground an answer in the retrieved documents.\")\n\n# irreversible step: stop and wait for a human, do not let the model decide\nif action.kind in {\"send_to_client\", \"file_with_court\"}:\n    checkpoint.save(state)\n    approvals.request(action, approver=supervising_partner)\n    raise PausedForApproval(action.id)",

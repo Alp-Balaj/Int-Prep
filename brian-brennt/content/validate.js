@@ -34,6 +34,20 @@ for (const n of pack.nodes || []) {
   if (n.id && !n.id.startsWith(pack.tier.id + '.')) err(w + ': id must start with ' + pack.tier.id + '.');
   if (!n.title || n.title.length > 40) err(w + ': title missing or > 40 chars');
   if (!n.tease || n.tease.length > 100) err(w + ': tease missing or > 100 chars');
+  const P = n.primer;
+  if (!P) err(w + ': primer missing');
+  else {
+    const pw = words(P.problem), cw = words(P.picture);
+    if (pw < 20 || pw > 70) err(w + ': primer.problem is ' + pw + ' words (want 25-60)');
+    if (cw < 30 || cw > 110) err(w + ': primer.picture is ' + cw + ' words (want 40-90)');
+    if (P.sketch && P.sketch.split('\n').length > 12) err(w + ': primer.sketch > 12 lines');
+    if (!Array.isArray(P.terms) || P.terms.length < 3 || P.terms.length > 7) err(w + ': primer.terms needs 3-7 entries');
+    for (const t of P.terms || []) {
+      if (!t.term || t.term.length > 40) err(w + ': primer term missing or > 40 chars');
+      const dw = words(t.def);
+      if (dw < 5 || dw > 30) err(w + ': primer term "' + t.term + '" def is ' + dw + ' words (want 8-25)');
+    }
+  }
   const L = n.lesson || {};
   const wc = words(L.body);
   if (wc < 120 || wc > 340) err(w + ': lesson.body is ' + wc + ' words (want 150-300)');
