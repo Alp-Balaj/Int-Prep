@@ -16,7 +16,7 @@ Progress is stored in the artifact's database and in the browser; nothing in thi
 
 ### Railway
 
-Also hosted on Railway (project `brian-brennt`, service `web`), deployed with `railway up`.
+Also hosted on Railway (project `brian-brennt`, service `web`): https://web-production-a3a03.up.railway.app. Pushes to `main` deploy automatically.
 
 - `server.js` serves `brian-brennt/` (no dependencies, `npm start`). It wraps `index.html` in a document skeleton, since the artifact runtime normally adds one.
 - With `APP_PASSPHRASE` set, it injects `brian-brennt/sync.js` — a stand-in for the artifact's `db` and `user` capabilities — and stores docs as JSON files in `DATA_DIR` (a Railway volume at `/data`). The app asks for the passphrase once per browser; without it, progress stays in that browser.
