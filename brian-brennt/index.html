@@ -296,6 +296,33 @@ label { font-size: 13px; color: var(--fg-2); display: block; margin-bottom: 4px;
 .milestone { margin-top: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--good); background: color-mix(in srgb, var(--good) 12%, var(--bg-2)); }
 @media (max-width: 420px) { .board-big { font-size: 52px; } .board-stats { gap: 12px; } .board-stats b { font-size: 18px; } }
 
+/* Case file */
+.node-file { min-width: 0; }
+.node-file[open] { grid-column: 1 / -1; }
+.node-file > summary { list-style: none; }
+.node-file > summary::-webkit-details-marker { display: none; }
+.node-file .chev { margin-left: auto; color: var(--fg-3); transition: transform .2s ease; align-self: center; }
+.node-file[open] .chev { transform: rotate(180deg); }
+.node-file[open] > summary { border-color: var(--accent); border-radius: 8px 8px 0 0; }
+.facts-body { border: 1px solid var(--accent); border-top: 0; border-radius: 0 0 8px 8px; padding: 12px; background: var(--bg-2); }
+.lost-n { color: var(--bad); }
+.locked-rest { grid-column: 1 / -1; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; }
+.facts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.fact { padding: 10px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--good); }
+.fact .fq { font-size: 14px; }
+.fact .fq strong { color: var(--good); }
+.fact .fa { font-weight: 600; color: var(--good); margin-top: 4px; }
+.fact .fw { font-size: 13px; color: var(--fg-2); margin-top: 4px; }
+.fact.lost { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, var(--surface)); }
+.fact.lost .fa { color: var(--bad); }
+.facts-title { font-family: var(--font-display); font-weight: 700; font-size: 15px; margin: 12px 0 8px; color: var(--good); }
+.facts-title.bad { color: var(--bad); }
+.facts-won { margin-top: 14px; }
+.facts-open { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; margin-top: 12px; }
+.facts-open i { width: 14px; height: 8px; border-radius: 2px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.facts-open span { margin-left: 6px; }
+.chip.fact-chip { border-color: var(--good); color: var(--good); font-weight: 600; }
+
 /* Stories */
 .story { padding: 12px 14px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
 .story .st { flex: 1; min-width: 180px; }

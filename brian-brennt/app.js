@@ -215,6 +215,19 @@ function nextNode(tid) {
   return fresh || open.slice().sort((a, b) => nodeProgress(a).stableF - nodeProgress(b).stableF)[0] || null;
 }
 function openNext(tid) { const n = nextNode(tid); if (n) go('lesson', { node: n.id }); else go('tree'); }
+// Case file: every recall card is a fact. Earned when last answered right; lost when it was earned once
+// (a good day on record) and the last answer was wrong; it is re-earned by answering right again.
+function factState(id) { const r = S.cards[id]; if (!r || !r.reps) return 'open'; if (r.lg >= GOOD) return 'earned'; return r.days?.length ? 'lost' : 'open'; }
+function factText(it) {
+  if (it.type === 'mc') return { q: it.prompt, a: it.options[it.answer] };
+  if (it.type === 'tf') return { q: it.prompt, a: it.answer ? 'True' : 'False' };
+  return { q: it.prompt.replace('___', '**' + it.answer + '**'), a: null };
+}
+function factCounts(ids) { const c = { earned: 0, lost: 0, open: 0 }; ids.forEach(id => c[factState(id)]++); return c; }
+function factHtml(id) {
+  const it = C.items[id]; const f = factText(it);
+  return `<li class="fact"><div class="fq">${inline(f.q)}</div>${f.a ? `<div class="fa">${inline(f.a)}</div>` : ''}<div class="fw">${inline(it.why)}</div></li>`;
+}
 function allItemsCount() { return Object.keys(C.items).length; }
 function seenCount() { return Object.keys(C.items).filter(seen).length; }
 function pace() {
@@ -308,14 +321,17 @@ function recordOutcome(item, correct, ms, grade) {
   if (item.kind === 'recall' && correct && ms < CLEAN_HIT_MS) { clean = true; d.cleanHits++; }
   if (correct) { const rt = S.rt[tid] = S.rt[tid] || []; rt.push(ms); if (rt.length > 20) rt.shift(); }
   if (item.kind === 'scenario') d.scenario++;
+  const factBefore = item.kind === 'recall' ? factState(item.id) : null;
   schedule(item.id, grade, ms);
+  const factAfter = item.kind === 'recall' ? factState(item.id) : null;
+  const fact = factBefore && factBefore !== 'earned' && factAfter === 'earned' ? (factBefore === 'lost' ? 'regained' : 'collected') : factBefore === 'earned' && factAfter === 'lost' ? 'lost' : null;
   let xp = 0;
   if (item.kind === 'recall') xp = correct ? XP.recall + (clean ? XP.cleanHit : 0) : 0;
   if (item.kind === 'scenario') xp = grade >= GOOD ? XP.scenarioBest : grade === HARD ? XP.scenarioOk : 0;
   if (item.kind === 'explain') xp = grade >= GOOD ? XP.explainGood : grade === HARD ? XP.explainHard : 0;
   if (xp) S.xp += xp;
   persist('state');
-  return { before, after, clean, xp, wasNew };
+  return { before, after, clean, xp, wasNew, fact };
 }
 
 // ---------------------------------------------------------------- telemetry
@@ -413,7 +429,7 @@ function tierPill(level) { return `<span class="pill t${level}">Tier ${level}</s
 // ---------------------------------------------------------------- screens
 const TABS = [
   { id: 'home', label: 'Docket', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg>' },
-  { id: 'tree', label: 'Matters', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7.5 7.5 11 16M16.5 7.5 13 16"/></svg>' },
+  { id: 'tree', label: 'Case file', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7.5 7.5 11 16M16.5 7.5 13 16"/></svg>' },
   { id: 'stories', label: 'Stories', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a4 4 0 0 1 4 4v5a4 4 0 0 1-8 0V7a4 4 0 0 1 4-4z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>' },
   { id: 'quests', label: 'Build', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h10"/></svg>' },
   { id: 'stats', label: 'Trends', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19 10 12l4 4 6-8"/></svg>' },
@@ -535,7 +551,7 @@ function renderBoard(heading = 'The board') {
       ${b.target > 0 && b.target < 1 ? (behind ? ` The marker is today's pace: <b class="num">${behind}</b> new cards behind it.` : ' You are ahead of today’s pace marker.') : ''}
     </div>
     <div class="board-tiers">
-      ${b.tiers.map(x => `<button class="board-tier" data-next="${x.t.id}" aria-label="Open the next matter in ${esc(x.t.name)}" style="--tc:var(--tier${x.t.level})">
+      ${b.tiers.map(x => `<button class="board-tier" data-next-tier="${x.t.id}" aria-label="Open the next matter in ${esc(x.t.name)}" style="--tc:var(--tier${x.t.level})">
         <div class="board-tier-head"><span class="name">${esc(x.t.name)} <span class="go">›</span></span><span class="num small muted">${x.stable}<span class="sep">/</span>${x.total}${x.lit ? ` <span class="lit-n">+${x.lit}</span>` : ''}</span></div>
         <div class="mosaic">${x.sq.map(q => `<i class="q${q.s}${q.lit ? ' lit' : ''}"></i>`).join('')}</div>
       </button>`).join('')}
@@ -548,22 +564,26 @@ function renderBoard(heading = 'The board') {
 function renderTree() {
   return `
   <section class="panel">
-    <div class="panel-head"><h2>Matters</h2><span class="small muted">Study in tier order. Open any unlocked node to read its lesson.</span></div>
-    <div class="row small muted" style="gap:14px"><span><i class="dot" style="background:var(--accent)"></i> seen</span><span><i class="dot ok"></i> stable (right on two days)</span></div>
+    <div class="panel-head"><h2>Case file</h2>${(() => { const c = factCounts(Object.keys(C.items).filter(id => C.items[id].kind === 'recall')); return `<span class="num small muted">${c.earned}/${c.earned + c.lost + c.open} facts</span>`; })()}</div>
+    <div class="small muted">Every quick-recall card you answer right becomes a fact here. Get one wrong later and it is lost until you win it back. Tap a matter to read what you have earned.</div>
   </section>
   ${C.tierList.map(t => {
     const s = tierStable(t.id); const b = S.bosses[t.id] || {}; const lockedOut = b.lockedUntil > Date.now();
     const canBoss = s.f >= BOSS_UNLOCK_STABLE && !lockedOut && !b.beaten && (C.bossQ[t.id] || []).length >= 1;
     return `<section class="tier" data-level="${t.level}">
-      <div class="tier-head"><div><div class="eyebrow">Tier ${t.level}</div><h2>${esc(t.name)}</h2></div><div class="row" style="gap:8px">${nextNode(t.id) ? `<button class="btn small primary" data-next="${t.id}" style="min-height:34px">Next matter</button>` : ''}<button class="btn small" data-start="deep" data-tier="${t.id}" style="min-height:34px">Deep dive</button></div></div>
+      <div class="tier-head"><div><div class="eyebrow">Tier ${t.level}</div><h2>${esc(t.name)}</h2></div><div class="row" style="gap:8px">${nextNode(t.id) ? `<button class="btn small primary" data-next-tier="${t.id}" style="min-height:34px">Next matter</button>` : ''}<button class="btn small" data-start="deep" data-tier="${t.id}" style="min-height:34px">Deep dive</button></div></div>
       <div class="small muted" style="margin-bottom:10px">${esc(t.tease)}</div>
       <div class="nodes">
-        ${t.nodes.map(nid => { const n = C.nodeById[nid]; const u = nodeUnlocked(n); const p = nodeProgress(n);
-          return `<button class="node${u ? '' : ' locked'}" data-node="${n.id}" ${u ? '' : 'aria-disabled="true"'}>
-            <div class="ring">${ring(p.seenF, p.stableF)}</div>
-            <div class="body"><div class="t">${u ? esc(n.title) : esc(n.tease)}</div>
-            ${u ? `<div class="d num">${p.seen}/${p.total} seen · ${p.stable} stable${S.lessons[n.id] ? ' · lesson read' : ''}</div>` : `<div class="lock">🔒 ${esc(n.title)}</div>`}</div>
-          </button>`; }).join('')}
+        ${t.nodes.map((nid, i) => { const n = C.nodeById[nid]; const u = nodeUnlocked(n); const p = nodeProgress(n); const fc = factCounts(n.cards);
+          const firstLocked = t.nodes.findIndex(x => !nodeUnlocked(C.nodeById[x]));
+          if (!u && i > firstLocked) { if (i !== firstLocked + 1) return ''; const rest = t.nodes.slice(i); return `<div class="locked-rest small muted">🔒 ${rest.length} more ${rest.length === 1 ? 'matter' : 'matters'} · ${rest.reduce((a, x) => a + C.nodeById[x].cards.length, 0)} facts to collect</div>`; }
+          if (!u) return `<button class="node locked" data-node="${n.id}" aria-disabled="true"><div class="ring">${ring(p.seenF, p.stableF)}</div><div class="body"><div class="t">${esc(n.tease)}</div><div class="lock">🔒 ${esc(n.title)} · ${n.cards.length} facts to collect</div></div></button>`;
+          return `<details class="node-file" data-facts="${n.id}">
+            <summary class="node"><div class="ring">${ring(fc.earned / (n.cards.length || 1), p.stableF)}</div>
+              <div class="body"><div class="t">${esc(n.title)}</div><div class="d num">${fc.earned}/${n.cards.length} facts${fc.lost ? ` · <span class="lost-n">${fc.lost} lost</span>` : ''}${S.lessons[n.id] ? '' : ' · lesson unread'}</div></div>
+              <span class="chev" aria-hidden="true">▾</span></summary>
+            <div class="facts-body"></div>
+          </details>`; }).join('')}
       </div>
       <div class="boss-card${b.beaten ? ' beaten' : ''}${lockedOut ? ' locked-out' : ''}" style="margin-top:10px">
         <div><div class="eyebrow">Hearing</div><div class="small">${b.beaten ? `Beaten on ${esc(b.beatenAt)} with ${pct(b.attempts[b.attempts.length - 1].score)}%` : lockedOut ? `Locked until ${new Date(b.lockedUntil).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : `Unlocks at ${pct(BOSS_UNLOCK_STABLE)}% stable · now <span class="num">${pct(s.f)}%</span>`}</div></div>
@@ -571,6 +591,13 @@ function renderTree() {
       </div>
     </section>`; }).join('')}
   ${renderFinalBossCard()}`;
+}
+function nodeFactsHtml(n) {
+  const by = { earned: [], lost: [], open: [] }; n.cards.forEach(id => by[factState(id)].push(id));
+  return `<div class="row" style="gap:8px;margin:4px 0 12px"><button class="btn small" data-lesson="${n.id}">Read lesson</button><button class="btn small primary" data-drill="${n.id}">Drill</button></div>
+    ${by.lost.length ? `<div class="facts-title bad">Lost · answer right in a drill to win back</div><ul class="facts">${by.lost.map(id => { const f = factText(C.items[id]); return `<li class="fact lost"><div class="fq">${inline(f.q.replace(/\*\*[^*]+\*\*/, '___'))}</div><div class="fa blur">${f.a ? inline(f.a) : 'hidden'}</div></li>`; }).join('')}</ul>` : ''}
+    ${by.earned.length ? `<ul class="facts">${by.earned.map(factHtml).join('')}</ul>` : ''}
+    ${by.open.length ? `<div class="facts-open">${by.open.map(() => '<i></i>').join('')}<span class="small muted">${by.open.length} still to collect</span></div>` : ''}`;
 }
 function renderFinalBossCard() {
   if (!C.finalQ) return '';
@@ -599,7 +626,7 @@ function renderLesson() {
   const tier = C.tiers[n.tier]; const idx = tier.nodes.indexOf(n.id); const next = tier.nodes[idx + 1] ? C.nodeById[tier.nodes[idx + 1]] : null;
   return `
   <section class="panel">
-    <div class="row" style="justify-content:space-between"><button class="btn ghost" data-go="tree">← Matters</button>${tierPill(n.level)}</div>
+    <div class="row" style="justify-content:space-between"><button class="btn ghost" data-go="tree">← Case file</button>${tierPill(n.level)}</div>
     <div class="eyebrow" style="margin-top:12px">${esc(tier.name)}</div>
     <h1>${esc(n.title)}</h1>
     <div class="small muted num" style="margin-top:4px">${p.seen}/${p.total} seen · ${p.stable} stable · ${n.cards.length} recall, ${n.scenarios.length} scenarios, ${n.explain.length} explain prompts</div>
@@ -669,6 +696,9 @@ function feedbackHtml(verdictText, ok, why, res, extra = '') {
   const deltas = [];
   if (res.before != null && res.after != null && res.before !== res.after) deltas.push(`<span class="chip ${res.after > res.before ? 'up' : 'down'}">${C.tiers[res.tier].name} ${pct(res.before)}% → ${pct(res.after)}%</span>`);
   else if (res.after != null) deltas.push(`<span class="chip">${C.tiers[res.tier].name} ${pct(res.after)}%</span>`);
+  if (res.fact === 'collected') deltas.push('<span class="chip fact-chip">+1 fact</span>');
+  if (res.fact === 'regained') deltas.push('<span class="chip fact-chip">fact won back</span>');
+  if (res.fact === 'lost') deltas.push('<span class="chip down">fact lost</span>');
   if (res.clean) deltas.push(`<span class="chip hot">clean hit · ${fmtMs(res.ms)}</span>`);
   if (res.xp) deltas.push(`<span class="chip up">+${res.xp} XP</span>`);
   if (session.combo >= 3) deltas.push(`<span class="chip hot">×${session.combo} combo</span>`);
@@ -680,12 +710,23 @@ function answerStatic(it, correct, grade, ms, verdictText, why, extra) {
   const res = recordOutcome(it, correct, ms, grade); res.tier = it.tier; res.ms = ms; res.nextIn = nextInText(it.id);
   session.answered++; if (correct) { session.correct++; session.combo++; session.bestCombo = Math.max(session.bestCombo, session.combo); } else { session.combo = 0; session.retries = session.retries || {}; if ((session.retries[it.id] = (session.retries[it.id] || 0) + 1) <= 2) session.again.push(it.id); }
   if (res.clean) session.clean++; session.xp += res.xp;
+  if (res.fact) (session.facts = session.facts || []).push({ id: it.id, kind: res.fact });
   sessionTele({ answered: session.answered }); checkMinimum();
   $('#feedback').innerHTML = feedbackHtml(verdictText, correct ? true : grade === HARD ? null : false, why, res, extra);
   $('[data-next]').focus();
 }
 
 // ---- Summary
+function sessionFactsHtml(s) {
+  const fs = s.facts || []; if (!fs.length) return '';
+  const last = {}; fs.forEach(f => { last[f.id] = f.kind; });
+  const won = Object.keys(last).filter(id => last[id] !== 'lost' && factState(id) === 'earned');
+  const lost = Object.keys(last).filter(id => last[id] === 'lost' && factState(id) === 'lost');
+  return `<div class="facts-won">
+    ${won.length ? `<div class="facts-title"><b class="num">${won.length}</b> ${won.length === 1 ? 'fact' : 'facts'} into your case file</div><ul class="facts">${won.map(factHtml).join('')}</ul>` : ''}
+    ${lost.length ? `<div class="facts-title bad"><b class="num">${lost.length}</b> lost. Win ${lost.length === 1 ? 'it' : 'them'} back next drill.</div>` : ''}
+  </div>`;
+}
 function renderSummary() {
   const s = lastSession; if (!s) return renderHome();
   const acc = s.answered ? pct(s.correct / s.answered) : 0; const dur = fmtMs((s.ended || Date.now()) - s.started);
@@ -703,6 +744,7 @@ function renderSummary() {
       <div class="kpi"><div class="v num">×${s.bestCombo}</div><div class="k">best combo</div></div>
       <div class="kpi"><div class="v num">+${s.xp}</div><div class="k">XP</div></div>
     </div>
+    ${sessionFactsHtml(s)}
     ${s.milestone ? `<div class="milestone">Milestone reached: <b>${pct(s.milestone)}% locked in</b></div>` : ''}
     <p class="small muted" style="margin-top:12px">${d.min ? `Docket cleared. Streak ${streak()}.` : ms.reviews.count ? `${ms.reviews.count} reviews still due today.` : !ms.scenario.done && ms.scenario.needed ? 'One scenario left to clear the docket.' : !ms.story.done && ms.story.needed ? 'One story drill left to clear the docket.' : 'Almost there.'}</p>
     <div class="row" style="margin-top:14px"><button class="btn primary" data-start="${d.min ? 'deep' : 'daily'}">${d.min ? 'One more run' : 'Finish the docket'}</button><button class="btn" data-go="home">Back to the docket</button></div>
@@ -958,7 +1000,8 @@ function bind(root) {
   root.querySelectorAll('[data-node]').forEach(b => b.addEventListener('click', () => { const n = C.nodeById[b.dataset.node]; if (nodeUnlocked(n)) go('lesson', { node: n.id }); else toast(`Locked. Finish ${C.nodeById[C.tiers[n.tier].nodes[C.tiers[n.tier].nodes.indexOf(n.id) - 1]].title} first.`); }));
   root.querySelectorAll('[data-drill]').forEach(b => b.addEventListener('click', () => startNodeDrill(b.dataset.drill)));
   root.querySelectorAll('[data-primer-ok]').forEach(b => b.addEventListener('click', () => { markPrimer(b.dataset.primerOk); render(); window.scrollTo({ top: 0 }); }));
-  root.querySelectorAll('[data-next]').forEach(b => b.addEventListener('click', () => openNext(b.dataset.next)));
+  root.querySelectorAll('details[data-facts]').forEach(d => d.addEventListener('toggle', () => { if (d.open && !d.dataset.filled) { d.dataset.filled = '1'; const body = d.querySelector('.facts-body'); body.innerHTML = nodeFactsHtml(C.nodeById[d.dataset.facts]); bind(body); } }));
+  root.querySelectorAll('[data-next-tier]').forEach(b => b.addEventListener('click', () => openNext(b.dataset.nextTier)));
   root.querySelectorAll('[data-lesson]').forEach(b => b.addEventListener('click', () => { if (session) { sessionTele({ end: Date.now(), completed: false, answered: session.answered, quitAt: session.idx, toLesson: true }); session = null; } go('lesson', { node: b.dataset.lesson }); }));
   root.querySelectorAll('[data-boss]').forEach(b => b.addEventListener('click', () => startBoss(b.dataset.boss)));
   root.querySelectorAll('[data-boss-begin]').forEach(b => b.addEventListener('click', () => { boss.phase = 'q'; render(); }));
