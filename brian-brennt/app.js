@@ -217,6 +217,32 @@ function pace() {
   const projected = recentNew == null ? null : clamp(sn + recentNew * left, 0, total);
   return { total, seen: sn, left, recentNew, needPerDay, projected };
 }
+// Board: every item as one square, grouped by tier and sorted so each tier fills like a battery.
+const MILESTONES = [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 1];
+function firstSeenToday(id) { const r = S.cards[id]; return !!r && r.reps > 0 && r.reps === r.hist.length && r.hist[0]?.[0] === todayStr(); }
+function stableToday(id) { const r = S.cards[id]; return stable(id) && r.days[1] === todayStr(); }
+function itemState(id, unlocked) { return stable(id) ? 3 : seen(id) ? 2 : unlocked ? 1 : 0; } // 3 stable, 2 seen, 1 open, 0 locked
+function stableFraction() { const ids = Object.keys(C.items); return ids.length ? ids.filter(stable).length / ids.length : 0; }
+function board() {
+  const tiers = C.tierList.map(t => {
+    const sq = [];
+    for (const nid of t.nodes) {
+      const n = C.nodeById[nid]; const u = nodeUnlocked(n);
+      for (const id of [...n.cards, ...n.explain, ...n.scenarios]) sq.push({ s: itemState(id, u), lit: stableToday(id) || firstSeenToday(id) });
+    }
+    sq.sort((a, b) => b.s - a.s || b.lit - a.lit);
+    const c = [0, 0, 0, 0]; sq.forEach(x => c[x.s]++);
+    return { t, sq, total: sq.length, stable: c[3], seen: c[3] + c[2], locked: c[0], lit: sq.filter(x => x.lit).length };
+  });
+  const total = tiers.reduce((a, x) => a + x.total, 0);
+  const st = tiers.reduce((a, x) => a + x.stable, 0), sn = tiers.reduce((a, x) => a + x.seen, 0);
+  const lit = tiers.reduce((a, x) => a + x.lit, 0);
+  const span = Math.max(1, (parseDate(S.settings.interviewDate) - parseDate(S.settings.startDate)) / DAY);
+  const target = clamp((dayIndex() - 1) / span, 0, 1);
+  const f = total ? st / total : 0;
+  const next = MILESTONES.find(m => m > f + 1e-9);
+  return { tiers, total, stable: st, seen: sn, left: total - sn, lit, target, f, next, nextGap: next ? Math.ceil(next * total) - st : 0 };
+}
 function streak() {
   let n = 0; const d = new Date(); let t = todayStr(d);
   if (!S.days[t]?.min) d.setDate(d.getDate() - 1);
@@ -322,7 +348,7 @@ function pickNew(n, tierPick) {
 function startSession(mode, tierPick) {
   const queue = buildQueue(mode, tierPick).filter(id => id.startsWith('story:') || C.items[id]);
   if (!queue.length) { toast(mode === 'daily' ? 'Nothing due. Deep dive for new material.' : 'Everything in reach has been seen. Review what is due.'); return; }
-  session = { mode, tier: tierPick || null, queue, idx: 0, started: Date.now(), answered: 0, correct: 0, clean: 0, xp: 0, combo: 0, bestCombo: 0, again: [], done: false, startedAt: Date.now() };
+  session = { mode, tier: tierPick || null, queue, idx: 0, started: Date.now(), answered: 0, correct: 0, clean: 0, xp: 0, combo: 0, bestCombo: 0, again: [], done: false, startedAt: Date.now(), stable0: stableFraction() };
   tele(t => { t.sessions.push({ start: Date.now(), mode, tier: tierPick || null, items: queue.length, completed: false, answered: 0 }); if (tierPick) t.tiersPicked[tierPick] = (t.tiersPicked[tierPick] || 0) + 1; });
   route = { screen: 'session' }; render();
 }
@@ -342,6 +368,8 @@ function finishSession(completed) {
   session.done = true; session.ended = Date.now();
   sessionTele({ end: Date.now(), completed, answered: session.answered, quitAt: completed ? null : session.idx });
   checkMinimum(); persist('state');
+  const f1 = stableFraction(); const hit = MILESTONES.filter(m => session.stable0 < m && f1 >= m).pop();
+  if (hit) { session.milestone = hit; setTimeout(() => toast(`Milestone: ${pct(hit)}% of everything locked in.`), 600); }
   lastSession = session; session = null; stopRec(); stopTimer();
   route = { screen: 'summary' };
 }
@@ -451,20 +479,17 @@ function renderHome() {
 
   ${bossReady.length ? `<section class="panel"><div class="boss-card"><div><div class="eyebrow">Hearing unlocked</div><h3>${esc(bossReady[0].t.name)}</h3><div class="small muted">3 questions, 3 minutes each. Fail and it locks for 24 hours.</div></div><button class="btn primary" data-boss="${bossReady[0].t.id}">Enter the hearing</button></div></section>` : ''}
 
+  ${renderBoard()}
+  <p class="small muted" style="margin-top:-8px;padding:0 4px">
+    ${p.left > 0 ? `To see everything before the interview you need <b class="num">${p.needPerDay}</b> new items a day.` : 'The interview is here. Review only.'}
+    ${p.projected != null && p.left > 0 ? ` At your recent pace (<span class="num">${Math.round(p.recentNew)}</span>/day) you will have seen <b class="num">${pct(p.projected / p.total)}%</b> of the material by then.` : ''}
+  </p>
+
   <section class="panel">
     <div class="panel-head"><h2>Accuracy, last ${RECENT_WINDOW}</h2><span class="small muted">headshot ratio</span></div>
     <div class="meters">
       ${C.tierList.map(t => { const a = recentAcc(t.id); const s = tierStable(t.id); return `<div class="meter"><div class="val">${a == null ? '—' : pct(a) + '%'}</div><div class="name" title="${esc(t.name)}">${esc(t.name)}</div><div class="bar"><i style="width:${pct(s.f)}%;background:var(--tier${t.level})"></i></div><div class="hint num">${s.stable}/${s.total} stable</div></div>`; }).join('')}
     </div>
-  </section>
-
-  <section class="panel">
-    <div class="panel-head"><h2>Pace</h2><span class="small muted num">${p.seen}/${p.total} seen</span></div>
-    <div class="progress" style="height:8px"><i style="width:${p.total ? pct(p.seen / p.total) : 0}%"></i></div>
-    <p class="small muted" style="margin-top:10px">
-      ${p.left > 0 ? `To see everything before the interview you need <b class="num">${p.needPerDay}</b> new items a day.` : 'The interview is here. Review only.'}
-      ${p.projected != null && p.left > 0 ? ` At your recent pace (<span class="num">${Math.round(p.recentNew)}</span>/day) you will have seen <b class="num">${pct(p.projected / p.total)}%</b> of the material by then.` : ''}
-    </p>
   </section>
 
   ${locked || nearBoss || tomorrowDue ? `<section class="tease">
@@ -476,6 +501,39 @@ function renderHome() {
     </div>
   </section>` : ''}
   `;
+}
+
+// ---- Board
+function renderBoard(heading = 'The board') {
+  const b = board(); if (!b.total) return '';
+  const w = (n) => (b.total ? (n / b.total) * 100 : 0).toFixed(2);
+  const behind = b.target > 0 && b.seen / b.total < b.target ? Math.ceil(b.target * b.total) - b.seen : 0;
+  return `<section class="panel board">
+    <div class="panel-head"><h2>${esc(heading)}</h2>${b.lit ? `<span class="chip hot num">+${b.lit} lit today</span>` : '<span class="small muted">every square is one card</span>'}</div>
+    <div class="board-head">
+      <div><div class="board-big num">${pct(b.f)}<small>%</small></div><div class="small muted">locked in</div></div>
+      <div class="board-stats">
+        <div><b class="num">${b.stable}</b><span>stable</span></div>
+        <div><b class="num">${b.seen - b.stable}</b><span>seen</span></div>
+        <div><b class="num">${b.left}</b><span>to go</span></div>
+      </div>
+    </div>
+    <div class="board-bar" role="img" aria-label="${b.stable} stable, ${b.seen - b.stable} seen, ${b.left} not seen of ${b.total}">
+      <i class="st" style="width:${w(b.stable)}%"></i><i class="sn" style="width:${w(b.seen - b.stable)}%"></i>
+      ${b.target > 0 && b.target < 1 ? `<span class="target" style="left:${(b.target * 100).toFixed(1)}%" title="Where seen should be today"></span>` : ''}
+    </div>
+    <div class="small muted board-next">
+      ${b.next ? `Next milestone <b>${pct(b.next)}% locked in</b>: <b class="num">${b.nextGap}</b> more stable cards.` : 'Everything is locked in.'}
+      ${b.target > 0 && b.target < 1 ? (behind ? ` The marker is today's pace: <b class="num">${behind}</b> new cards behind it.` : ' You are ahead of today’s pace marker.') : ''}
+    </div>
+    <div class="board-tiers">
+      ${b.tiers.map(x => `<button class="board-tier" data-go="tree" style="--tc:var(--tier${x.t.level})">
+        <div class="board-tier-head"><span class="name">${esc(x.t.name)}</span><span class="num small muted">${x.stable}<span class="sep">/</span>${x.total}${x.lit ? ` <span class="lit-n">+${x.lit}</span>` : ''}</span></div>
+        <div class="mosaic">${x.sq.map(q => `<i class="q${q.s}${q.lit ? ' lit' : ''}"></i>`).join('')}</div>
+      </button>`).join('')}
+    </div>
+    <div class="row small muted board-legend"><span><i class="lg q3"></i>stable</span><span><i class="lg q2"></i>seen</span><span><i class="lg q1"></i>open</span><span><i class="lg q0"></i>locked</span><span><i class="lg q2 lit"></i>today</span></div>
+  </section>`;
 }
 
 // ---- Tree
@@ -637,9 +695,11 @@ function renderSummary() {
       <div class="kpi"><div class="v num">×${s.bestCombo}</div><div class="k">best combo</div></div>
       <div class="kpi"><div class="v num">+${s.xp}</div><div class="k">XP</div></div>
     </div>
+    ${s.milestone ? `<div class="milestone">Milestone reached: <b>${pct(s.milestone)}% locked in</b></div>` : ''}
     <p class="small muted" style="margin-top:12px">${d.min ? `Docket cleared. Streak ${streak()}.` : ms.reviews.count ? `${ms.reviews.count} reviews still due today.` : !ms.scenario.done && ms.scenario.needed ? 'One scenario left to clear the docket.' : !ms.story.done && ms.story.needed ? 'One story drill left to clear the docket.' : 'Almost there.'}</p>
     <div class="row" style="margin-top:14px"><button class="btn primary" data-start="${d.min ? 'deep' : 'daily'}">${d.min ? 'One more run' : 'Finish the docket'}</button><button class="btn" data-go="home">Back to the docket</button></div>
   </section>
+  ${renderBoard('Where you stand')}
   <section class="tease">
     <div class="eyebrow">Tomorrow</div>
     ${locked ? `<div class="q">${esc(locked.tease)}</div><div class="small muted" style="margin-top:4px">${esc(locked.title)} is the next locked node.</div><div class="lesson blur small" style="margin-top:8px;max-height:60px;overflow:hidden">${paras(locked.lesson.body.slice(0, 260))}</div>` : ''}
