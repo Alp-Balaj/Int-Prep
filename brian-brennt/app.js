@@ -207,6 +207,14 @@ function nextLockedNode() {
   for (const t of C.tierList) for (const nid of t.nodes) { const n = C.nodeById[nid]; if (!nodeUnlocked(n)) return n; }
   return null;
 }
+// The matter to open when a tier is tapped: first unlocked node with an unread lesson or unseen items,
+// else the weakest unlocked node (lowest stable share).
+function nextNode(tid) {
+  const open = C.tiers[tid].nodes.map(id => C.nodeById[id]).filter(nodeUnlocked);
+  const fresh = open.find(n => { const p = nodeProgress(n); return !S.lessons[n.id] || p.seen < p.total; });
+  return fresh || open.slice().sort((a, b) => nodeProgress(a).stableF - nodeProgress(b).stableF)[0] || null;
+}
+function openNext(tid) { const n = nextNode(tid); if (n) go('lesson', { node: n.id }); else go('tree'); }
 function allItemsCount() { return Object.keys(C.items).length; }
 function seenCount() { return Object.keys(C.items).filter(seen).length; }
 function pace() {
@@ -527,8 +535,8 @@ function renderBoard(heading = 'The board') {
       ${b.target > 0 && b.target < 1 ? (behind ? ` The marker is today's pace: <b class="num">${behind}</b> new cards behind it.` : ' You are ahead of today’s pace marker.') : ''}
     </div>
     <div class="board-tiers">
-      ${b.tiers.map(x => `<button class="board-tier" data-go="tree" style="--tc:var(--tier${x.t.level})">
-        <div class="board-tier-head"><span class="name">${esc(x.t.name)}</span><span class="num small muted">${x.stable}<span class="sep">/</span>${x.total}${x.lit ? ` <span class="lit-n">+${x.lit}</span>` : ''}</span></div>
+      ${b.tiers.map(x => `<button class="board-tier" data-next="${x.t.id}" aria-label="Open the next matter in ${esc(x.t.name)}" style="--tc:var(--tier${x.t.level})">
+        <div class="board-tier-head"><span class="name">${esc(x.t.name)} <span class="go">›</span></span><span class="num small muted">${x.stable}<span class="sep">/</span>${x.total}${x.lit ? ` <span class="lit-n">+${x.lit}</span>` : ''}</span></div>
         <div class="mosaic">${x.sq.map(q => `<i class="q${q.s}${q.lit ? ' lit' : ''}"></i>`).join('')}</div>
       </button>`).join('')}
     </div>
@@ -547,7 +555,7 @@ function renderTree() {
     const s = tierStable(t.id); const b = S.bosses[t.id] || {}; const lockedOut = b.lockedUntil > Date.now();
     const canBoss = s.f >= BOSS_UNLOCK_STABLE && !lockedOut && !b.beaten && (C.bossQ[t.id] || []).length >= 1;
     return `<section class="tier" data-level="${t.level}">
-      <div class="tier-head"><div><div class="eyebrow">Tier ${t.level}</div><h2>${esc(t.name)}</h2></div><div class="row" style="gap:8px"><button class="btn small" data-start="deep" data-tier="${t.id}" style="min-height:34px">Deep dive</button></div></div>
+      <div class="tier-head"><div><div class="eyebrow">Tier ${t.level}</div><h2>${esc(t.name)}</h2></div><div class="row" style="gap:8px">${nextNode(t.id) ? `<button class="btn small primary" data-next="${t.id}" style="min-height:34px">Next matter</button>` : ''}<button class="btn small" data-start="deep" data-tier="${t.id}" style="min-height:34px">Deep dive</button></div></div>
       <div class="small muted" style="margin-bottom:10px">${esc(t.tease)}</div>
       <div class="nodes">
         ${t.nodes.map(nid => { const n = C.nodeById[nid]; const u = nodeUnlocked(n); const p = nodeProgress(n);
@@ -602,7 +610,7 @@ function renderLesson() {
     ${L.snippet ? `<pre><code>${esc(L.snippet)}</code></pre>` : ''}
     <p class="small" style="margin-top:12px">Source: <a href="${esc(L.source.url)}" target="_blank" rel="noopener">${esc(L.source.title)}</a></p>
     <hr>
-    <div class="row"><button class="btn primary" data-drill="${n.id}">Drill this node</button>${next ? `<span class="small muted">Next: ${nodeUnlocked(next) ? esc(next.title) : '🔒 ' + esc(next.tease)}</span>` : ''}</div>
+    <div class="row"><button class="btn primary" data-drill="${n.id}">Drill this node</button>${next ? (nodeUnlocked(next) ? `<button class="btn" data-lesson="${next.id}">Next: ${esc(next.title)} →</button>` : `<span class="small muted">Next: 🔒 ${esc(next.tease)}</span>`) : ''}</div>
   </section>`;
 }
 function startNodeDrill(nodeId) {
@@ -950,6 +958,7 @@ function bind(root) {
   root.querySelectorAll('[data-node]').forEach(b => b.addEventListener('click', () => { const n = C.nodeById[b.dataset.node]; if (nodeUnlocked(n)) go('lesson', { node: n.id }); else toast(`Locked. Finish ${C.nodeById[C.tiers[n.tier].nodes[C.tiers[n.tier].nodes.indexOf(n.id) - 1]].title} first.`); }));
   root.querySelectorAll('[data-drill]').forEach(b => b.addEventListener('click', () => startNodeDrill(b.dataset.drill)));
   root.querySelectorAll('[data-primer-ok]').forEach(b => b.addEventListener('click', () => { markPrimer(b.dataset.primerOk); render(); window.scrollTo({ top: 0 }); }));
+  root.querySelectorAll('[data-next]').forEach(b => b.addEventListener('click', () => openNext(b.dataset.next)));
   root.querySelectorAll('[data-lesson]').forEach(b => b.addEventListener('click', () => { if (session) { sessionTele({ end: Date.now(), completed: false, answered: session.answered, quitAt: session.idx, toLesson: true }); session = null; } go('lesson', { node: b.dataset.lesson }); }));
   root.querySelectorAll('[data-boss]').forEach(b => b.addEventListener('click', () => startBoss(b.dataset.boss)));
   root.querySelectorAll('[data-boss-begin]').forEach(b => b.addEventListener('click', () => { boss.phase = 'q'; render(); }));
