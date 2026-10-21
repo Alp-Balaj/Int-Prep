@@ -17,16 +17,21 @@ const PACK_FILES = [
   'content/cv-d-angular.json',
   'content/cv-e-senior-ai.json',
 ];
-const TIER_ORDER = ['agentic', 'aws', 'react-python', 'security', 'ediscovery', 'cv'];
+const TIER_ORDER = ['cv', 'agentic', 'aws', 'react-python', 'security', 'ediscovery'];
+// Interview priority overrides the packs' own levels: every CV line is a guaranteed question.
+const TIER_LEVEL = { cv: 1, agentic: 1, aws: 2, 'react-python': 2, security: 2, ediscovery: 3 };
 const TIER_WEIGHT = { 1: 6, 2: 3, 3: 1 };
 const DAY = 86400000;
 const CLEAN_HIT_MS = 8000;
 const AGAIN = 0, HARD = 1, GOOD = 2, EASY = 3;
 const GRADE_LABEL = ['Again', 'Hard', 'Good', 'Easy'];
-const XP = { recall: 10, cleanHit: 5, scenarioBest: 25, scenarioOk: 10, explainGood: 30, explainHard: 15, story: 40, lesson: 15, dailyMin: 100, boss: 500, finalBoss: 1000 };
+const XP = { mock: 100, recall: 10, cleanHit: 5, scenarioBest: 25, scenarioOk: 10, explainGood: 30, explainHard: 15, story: 40, lesson: 15, dailyMin: 100, boss: 500, finalBoss: 1000 };
 const BOSS_PASS = 0.7;
+const RANKS = [[0, 'Intern'], [500, 'Paralegal'], [1500, 'Associate'], [3500, 'Senior Associate'], [6000, 'Counsel'], [10000, 'Partner'], [15000, 'Managing Partner']];
+const MOCK_SIZE = { recall: 7, scenario: 2, explain: 1 };
+const MOCK_SECONDS = { recall: 20, scenario: 60 };
 const BOSS_LOCKOUT_MS = 24 * 3600000;
-const BOSS_UNLOCK_STABLE = 0.8;
+const BOSS_UNLOCK_STABLE = 0.6;
 const FINAL_BOSS_DAY = 12;
 const RECENT_WINDOW = 40;
 const LS = { state: 'bb.state.v1', stories: 'bb.stories.v1', tele: 'bb.tele.v1.' };
@@ -61,6 +66,8 @@ const defaultState = () => ({
   lessons: {},                 // nodeId -> first read date
   primers: {},                 // nodeId -> date the primer was first read
   settings: { interviewDate: '2026-11-02', startDate: '2026-10-20' },
+  rank: 0,                     // highest rank index announced
+  mocks: [],                   // [{date, score, n, ms, tiers:{tier:[got, of]}}]
 });
 const defaultStories = () => ({ updatedAt: 0, items: {} }); // storyId -> {situation, decision, result, hook, iv, due, ratings:[]}
 const defaultTele = (date) => ({ date, opens: 0, sessions: [], skips: {}, hours: {}, tiersPicked: {}, lessonsRead: [], timeOnPage: 0, updatedAt: 0 });
@@ -152,12 +159,13 @@ async function loadContent() {
   const tiers = {}; const nodes = []; const items = {}; const bossQ = {}; let finalQ = null;
   for (const p of packs) {
     const tid = p.tier.id;
-    tiers[tid] = tiers[tid] || { id: tid, name: p.tier.name, level: p.tier.level, tease: p.tier.tease, nodes: [] };
+    const lvl = TIER_LEVEL[tid] ?? p.tier.level;
+    tiers[tid] = tiers[tid] || { id: tid, name: p.tier.name, level: lvl, tease: p.tier.tease, nodes: [] };
     for (const n of p.nodes) {
-      const node = { id: n.id, tier: tid, level: p.tier.level, title: n.title, tease: n.tease, primer: n.primer, lesson: n.lesson, cards: [], explain: [], scenarios: [] };
-      for (const c of n.cards || []) { const it = { ...c, kind: 'recall', node: n.id, tier: tid, level: p.tier.level }; items[c.id] = it; node.cards.push(c.id); }
-      for (const e of n.explain || []) { const it = { ...e, kind: 'explain', node: n.id, tier: tid, level: p.tier.level }; items[e.id] = it; node.explain.push(e.id); }
-      for (const s of n.scenarios || []) { const it = { ...s, kind: 'scenario', node: n.id, tier: tid, level: p.tier.level }; items[s.id] = it; node.scenarios.push(s.id); }
+      const node = { id: n.id, tier: tid, level: lvl, title: n.title, tease: n.tease, primer: n.primer, lesson: n.lesson, cards: [], explain: [], scenarios: [] };
+      for (const c of n.cards || []) { const it = { ...c, kind: 'recall', node: n.id, tier: tid, level: lvl }; items[c.id] = it; node.cards.push(c.id); }
+      for (const e of n.explain || []) { const it = { ...e, kind: 'explain', node: n.id, tier: tid, level: lvl }; items[e.id] = it; node.explain.push(e.id); }
+      for (const s of n.scenarios || []) { const it = { ...s, kind: 'scenario', node: n.id, tier: tid, level: lvl }; items[s.id] = it; node.scenarios.push(s.id); }
       nodes.push(node); tiers[tid].nodes.push(node.id);
     }
     for (const b of p.boss?.questions || []) {
@@ -178,7 +186,7 @@ const isDue = (id) => { const r = S.cards[id]; return !!r && r.reps > 0 && r.due
 const daysLeft = () => Math.max(0, Math.ceil((parseDate(S.settings.interviewDate).getTime() - Date.now()) / DAY));
 const dayIndex = () => Math.floor((parseDate(todayStr()).getTime() - parseDate(S.settings.startDate).getTime()) / DAY) + 1;
 const today = () => S.days[todayStr()] || (S.days[todayStr()] = { answered: 0, correct: 0, newSeen: 0, reviews: 0, scenario: 0, story: 0, cleanHits: 0, ms: 0, min: false, tiers: {} });
-function newPerDay() { const d = dayIndex(); if (d >= 14) return 0; if (d >= 11) return 10; return 22; }
+function newPerDay() { const d = dayIndex(); if (d >= 14) return 0; if (d >= 11) return 20; return 40; }
 
 function nodeUnlocked(node) {
   const tier = C.tiers[node.tier]; const idx = tier.nodes.indexOf(node.id);
@@ -435,16 +443,27 @@ const TABS = [
   { id: 'stats', label: 'Trends', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19 10 12l4 4 6-8"/></svg>' },
 ];
 
+function rankOf(xp) {
+  let i = 0; while (i + 1 < RANKS.length && xp >= RANKS[i + 1][0]) i++;
+  const [lo, name] = RANKS[i]; const nx = RANKS[i + 1];
+  return { i, name, next: nx ? nx[1] : null, toNext: nx ? nx[0] - xp : 0, f: nx ? (xp - lo) / (nx[0] - lo) : 1 };
+}
 function renderTop() {
   const n = streak(); const el = $('#top-streak'); el.classList.toggle('hot', n > 0);
-  $('#top-streak-n').textContent = n; $('#top-xp').textContent = `${S.xp.toLocaleString()} XP`;
+  const r = rankOf(S.xp);
+  $('#top-streak-n').textContent = n;
+  $('#top-xp').innerHTML = `<span class="rank-name">${esc(r.name)}</span><span class="rank-bar"><i style="width:${pct(r.f)}%"></i></span>`;
+  $('#top-xp').title = `${S.xp.toLocaleString()} XP${r.next ? ` · ${r.toNext.toLocaleString()} to ${r.next}` : ''}`;
+  if (r.i > (S.rank || 0)) { S.rank = r.i; persist('state'); setTimeout(() => toast(`Promoted to ${r.name}.`), 900); }
 }
+function rankLine() { const r = rankOf(S.xp); return r.next ? `<b>${esc(r.name)}</b> · <span class="num">${r.toNext.toLocaleString()}</span> XP to ${esc(r.next)}` : `<b>${esc(r.name)}</b>. Top rank.`; }
 function renderTabs() {
   const due = C ? dueItems().length : 0;
   $('#tabs').innerHTML = TABS.map(t => `<div class="tab-wrap"><button class="tab${route.screen === t.id ? ' active' : ''}" data-tab="${t.id}" aria-label="${t.label}">${t.icon}<span>${t.label}</span></button>${t.id === 'home' && due ? `<span class="tab-badge num">${due}</span>` : ''}</div>`).join('');
   $('#tabs').querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => go(b.dataset.tab)));
 }
 function go(screen, extra = {}) {
+  if (mock && !mock.done && screen !== 'mock') mock = null;
   if (session && !session.done && screen !== 'session') { sessionTele({ end: Date.now(), completed: false, answered: session.answered, quitAt: session.idx }); session = null; }
   stopTimer(); stopRec(); route = { screen, ...extra };
   if (TABS.some(t => t.id === screen)) { try { history.replaceState(null, '', '#' + screen); } catch { /* ignore */ } }
@@ -454,7 +473,7 @@ function render() {
   if (!C) return;
   renderTop(); renderTabs();
   const main = $('#main');
-  const fn = { home: renderHome, tree: renderTree, lesson: renderLesson, session: renderSession, summary: renderSummary, boss: renderBoss, stories: renderStories, storyEdit: renderStoryEdit, storyDrill: renderStoryDrill, quests: renderQuests, stats: renderStats, settings: renderSettings }[route.screen] || renderHome;
+  const fn = { mock: renderMock, home: renderHome, tree: renderTree, lesson: renderLesson, session: renderSession, summary: renderSummary, boss: renderBoss, stories: renderStories, storyEdit: renderStoryEdit, storyDrill: renderStoryDrill, quests: renderQuests, stats: renderStats, settings: renderSettings }[route.screen] || renderHome;
   main.innerHTML = fn();
   bind(main);
 }
@@ -509,6 +528,8 @@ function renderHome() {
     ${p.projected != null && p.left > 0 ? ` At your recent pace (<span class="num">${Math.round(p.recentNew)}</span>/day) you will have seen <b class="num">${pct(p.projected / p.total)}%</b> of the material by then.` : ''}
   </p>
 
+  ${mockHomeCard()}
+
   <section class="panel">
     <div class="panel-head"><h2>Accuracy, last ${RECENT_WINDOW}</h2><span class="small muted">headshot ratio</span></div>
     <div class="meters">
@@ -525,6 +546,123 @@ function renderHome() {
     </div>
   </section>` : ''}
   `;
+}
+
+// ---- Mock interview: mixed questions across tiers, timed, no hints, no feedback until the end.
+// Pure measurement: it does not touch the spaced-repetition schedule.
+let mock = null;
+function mockPick(kind, n) {
+  const pools = C.tierList.map(t => ({ w: TIER_WEIGHT[t.level], ids: shuffle(t.nodes.flatMap(id => C.nodeById[id][kind === 'recall' ? 'cards' : kind === 'scenario' ? 'scenarios' : 'explain'])) })).filter(p => p.ids.length);
+  const out = [];
+  while (out.length < n && pools.some(p => p.ids.length)) {
+    const live = pools.filter(p => p.ids.length); let r = Math.random() * live.reduce((a, p) => a + p.w, 0);
+    const chosen = live.find(p => (r -= p.w) <= 0) || live[0]; out.push(chosen.ids.shift());
+  }
+  return out;
+}
+function startMock() {
+  const rc = mockPick('recall', MOCK_SIZE.recall), sc = mockPick('scenario', MOCK_SIZE.scenario), ex = mockPick('explain', MOCK_SIZE.explain);
+  const qs = [...rc]; sc.forEach((id, i) => qs.splice(2 + i * 3, 0, id)); qs.push(...ex);
+  mock = { qs, idx: 0, res: [], started: Date.now(), qStart: Date.now(), stage: 'ask', done: false };
+  go('mock');
+}
+function mockAnswer(score, extra = {}) {
+  if (!mock || mock.done) return;
+  stopTimer();
+  mock.res.push({ id: mock.qs[mock.idx], score, ms: Date.now() - mock.qStart, ...extra });
+  mock.idx++; mock.stage = 'ask'; mock.qStart = Date.now();
+  if (mock.idx >= mock.qs.length) finishMock();
+  render(); window.scrollTo({ top: 0 });
+}
+function finishMock() {
+  const n = mock.res.length; const score = n ? mock.res.reduce((a, r) => a + r.score, 0) / n : 0;
+  const tiers = {}; mock.res.forEach(r => { const t = C.items[r.id].tier; const x = tiers[t] = tiers[t] || [0, 0]; x[0] += r.score; x[1]++; });
+  S.mocks = S.mocks || []; S.mocks.push({ date: todayStr(), score, n, ms: Date.now() - mock.started, tiers });
+  S.xp += XP.mock; persist('state');
+  mock.done = true; mock.score = score; mock.tiers = tiers;
+}
+function mockCardHtml(it) {
+  if (it.kind === 'recall') {
+    if (it.type === 'mc') return `<div class="prompt">${inline(it.prompt)}</div><div class="opts">${it.options.map((o, i) => `<button class="opt" data-mock-mc="${i}"><span class="key">${'ABCDE'[i]}</span><span class="txt">${inline(o)}</span></button>`).join('')}</div>`;
+    if (it.type === 'tf') return `<div class="prompt">${inline(it.prompt)}</div><div class="opts"><button class="opt" data-mock-tf="true"><span class="key">T</span><span class="txt">True</span></button><button class="opt" data-mock-tf="false"><span class="key">F</span><span class="txt">False</span></button></div>`;
+    const gap = mock.stage === 'reveal' ? `<span class="gap" style="color:var(--accent-2)">${esc(it.answer)}</span>` : '<span class="gap">&nbsp;</span>';
+    return `<div class="prompt">${inline(it.prompt).replace('___', gap)}</div>` + (mock.stage === 'reveal'
+      ? `<div class="hint" style="margin-top:14px">Did you have it before the reveal?</div><div class="row" style="margin-top:8px"><button class="btn bad" data-mock-score="0" style="flex:1">Missed</button><button class="btn good" data-mock-score="1" style="flex:1">Had it</button></div>`
+      : `<div class="row" style="margin-top:16px"><button class="btn primary block" data-mock-reveal="1">Say it, then reveal</button></div>`);
+  }
+  if (it.kind === 'scenario') return `<div class="situation">${inline(it.situation)}</div><div class="prompt">${inline(it.question)}</div><div class="opts">${shuffleStable(it).map((o, k) => `<button class="opt" data-mock-sc="${o._i}"><span class="key">${'ABCDE'[k]}</span><span class="txt">${inline(o.text)}</span></button>`).join('')}</div>`;
+  return `<div class="prompt">${inline(it.prompt)}</div>` + (mock.stage === 'reveal'
+    ? `<div class="model-answer"><b>Model answer.</b> ${inline(it.modelAnswer)}</div><div class="hint" style="margin-top:12px">Tick what you actually said:</div><div class="rubric">${it.rubric.map((r, i) => `<label><input type="checkbox" data-mock-rub="${i}"> <span>${esc(r)}</span></label>`).join('')}</div><div class="row" style="margin-top:12px"><button class="btn primary block" data-mock-rubric="1">Score it</button></div>`
+    : `<p class="small muted" style="margin-top:12px">Answer out loud, as you would to the interviewer. ${fmtMs(it.seconds * 1000)} on the clock.</p><div class="row" style="margin-top:16px"><button class="btn primary block" data-mock-reveal="1">Done speaking</button></div>`);
+}
+function mockHistoryHtml() {
+  const h = (S.mocks || []).slice(-12); if (!h.length) return '';
+  return `<div class="mock-hist" role="img" aria-label="Last ${h.length} mock scores">${h.map((m, i) => `<div class="mh${i === h.length - 1 ? ' last' : ''}" title="${esc(m.date)}: ${pct(m.score)}%"><i style="height:${Math.max(4, pct(m.score))}%"></i><span class="num">${pct(m.score)}</span></div>`).join('')}</div>`;
+}
+function mockHomeCard() {
+  const h = S.mocks || []; const last = h[h.length - 1]; const best = h.reduce((a, m) => Math.max(a, m.score), 0);
+  return `<section class="panel mock-card">
+    <div class="panel-head"><h2>Mock interview</h2>${last ? `<span class="small muted num">last ${pct(last.score)}% · best ${pct(best)}%</span>` : '<span class="small muted">the real test</span>'}</div>
+    <p class="small muted">${MOCK_SIZE.recall + MOCK_SIZE.scenario + MOCK_SIZE.explain} questions from every tier, including ones you have not studied. Timed, no hints, scored at the end. Run one every two or three days and watch the line climb.</p>
+    ${mockHistoryHtml()}
+    <button class="btn primary big block" data-mock-start="1" style="margin-top:12px">${last ? 'Run another mock' : 'Run your first mock'}</button>
+  </section>`;
+}
+function renderMock() {
+  if (!mock) return renderHome();
+  if (mock.done) return renderMockResult();
+  const it = C.items[mock.qs[mock.idx]]; const n = mock.qs.length;
+  const secs = it.kind === 'explain' ? it.seconds : MOCK_SECONDS[it.kind];
+  return `<section class="panel">
+    <div class="session-top"><span class="eyebrow">Mock interview · ${mock.idx + 1} of ${n}</span><button class="btn ghost small" data-mock-quit="1" style="min-height:32px">Quit</button></div>
+    <div class="progress" style="margin-top:10px"><i style="width:${pct(mock.idx / n)}%"></i></div>
+  </section>
+  <section class="card">
+    <div class="kind"><span class="eyebrow">${it.kind === 'recall' ? 'Quick question' : it.kind === 'scenario' ? 'Scenario' : 'Explain it'} · ${esc(C.tiers[it.tier].name)}</span><span class="num mock-time" id="mock-time"></span></div>
+    ${mock.stage === 'ask' ? `<div class="timer-bar" style="margin-bottom:14px"><i id="mock-bar"></i></div>` : ''}
+    ${mockCardHtml(it)}
+    ${mock.stage === 'ask' ? `<input type="hidden" data-mock-timer="${secs}">` : ''}
+  </section>`;
+}
+function renderMockResult() {
+  const h = S.mocks || []; const prev = h.length > 1 ? h[h.length - 2].score : null; const best = h.slice(0, -1).reduce((a, m) => Math.max(a, m.score), 0);
+  const missed = mock.res.filter(r => r.score < 1);
+  const missHtml = (r) => {
+    const it = C.items[r.id];
+    if (it.kind === 'recall') { const f = factText(it); return `<li class="fact lost"><div class="fq">${inline(f.q)}</div>${f.a ? `<div class="fa">${inline(f.a)}</div>` : ''}<div class="fw">${inline(it.why)}</div></li>`; }
+    if (it.kind === 'scenario') { const b = it.options.find(o => o.verdict === 'best'); return `<li class="fact lost"><div class="fq">${inline(it.question)} <span class="muted">${inline(it.situation.split(/(?<=\.)\s/)[0])}</span></div><div class="fa">${inline(b.text)}</div><div class="fw">${inline(b.why)}</div></li>`; }
+    return `<li class="fact lost"><div class="fq">${inline(it.prompt)}</div><div class="fw">Scored ${pct(r.score)}% on the rubric. ${inline(it.modelAnswer)}</div></li>`;
+  };
+  return `<section class="panel">
+    <div class="eyebrow">Mock interview · ${fmtMs(Date.now() - mock.started)}</div>
+    <div class="summary-big">${pct(mock.score)}%</div>
+    <div class="small muted" style="margin-top:6px">${prev == null ? 'Your baseline. Every mock from here is measured against it.' : mock.score > prev ? `<span class="up">Up ${pct(mock.score - prev)} points</span> on the last mock.${mock.score > best ? ' New best.' : ''}` : mock.score < prev ? `<span class="down">Down ${pct(prev - mock.score)} points</span> on the last mock.` : 'Same as the last mock.'} +${XP.mock} XP.</div>
+    ${mockHistoryHtml()}
+    <div class="stack" style="margin-top:14px">${C.tierList.filter(t => mock.tiers[t.id]).map(t => { const [g, o] = mock.tiers[t.id]; return `<div class="stat-row"><span class="small">${esc(t.name)}</span><div class="progress"><i style="width:${pct(g / o)}%;background:var(--tier${t.level})"></i></div><span class="num small">${Math.round(g * 10) / 10}/${o}</span></div>`; }).join('')}</div>
+    <div class="row" style="margin-top:14px"><button class="btn primary" data-mock-start="1">Another mock</button><button class="btn" data-go="home">Back to the docket</button></div>
+  </section>
+  ${missed.length ? `<section class="panel"><div class="panel-head"><h2>What you missed</h2><span class="small muted num">${missed.length}</span></div><ul class="facts">${missed.map(missHtml).join('')}</ul></section>` : ''}`;
+}
+function bindMock(root) {
+  const it = mock && !mock.done ? C.items[mock.qs[mock.idx]] : null;
+  root.querySelectorAll('[data-mock-start]').forEach(b => b.addEventListener('click', startMock));
+  root.querySelectorAll('[data-mock-quit]').forEach(b => b.addEventListener('click', () => { mock = null; go('home'); }));
+  if (!it) return;
+  root.querySelectorAll('[data-mock-mc]').forEach(b => b.addEventListener('click', () => mockAnswer(+b.dataset.mockMc === it.answer ? 1 : 0)));
+  root.querySelectorAll('[data-mock-tf]').forEach(b => b.addEventListener('click', () => mockAnswer((b.dataset.mockTf === 'true') === it.answer ? 1 : 0)));
+  root.querySelectorAll('[data-mock-sc]').forEach(b => b.addEventListener('click', () => { const v = it.options[+b.dataset.mockSc].verdict; mockAnswer(v === 'best' ? 1 : v === 'ok' ? 0.5 : 0); }));
+  root.querySelectorAll('[data-mock-reveal]').forEach(b => b.addEventListener('click', () => { stopTimer(); mock.stage = 'reveal'; render(); }));
+  root.querySelectorAll('[data-mock-score]').forEach(b => b.addEventListener('click', () => mockAnswer(+b.dataset.mockScore)));
+  root.querySelectorAll('[data-mock-rubric]').forEach(b => b.addEventListener('click', () => { const all = root.querySelectorAll('[data-mock-rub]'); const t = [...all].filter(x => x.checked).length; mockAnswer(all.length ? t / all.length : 0); }));
+  const tm = root.querySelector('[data-mock-timer]');
+  if (tm) {
+    const secs = +tm.dataset.mockTimer;
+    const rem = Math.max(0.5, secs - (Date.now() - mock.qStart) / 1000);
+    runTimer(rem, (el, left) => {
+      const t = $('#mock-time'); if (t) { t.textContent = fmtMs(Math.max(0, left)); t.classList.toggle('over', left <= 5000); }
+      const bar = $('#mock-bar'); if (bar) bar.style.width = `${clamp(left / (secs * 1000), 0, 1) * 100}%`;
+    }, () => { if (it.kind === 'explain' || (it.kind === 'recall' && it.type === 'cloze')) { stopTimer(); mock.stage = 'reveal'; render(); } else mockAnswer(0, { timeout: true }); });
+  }
 }
 
 // ---- Board
@@ -744,6 +882,7 @@ function renderSummary() {
       <div class="kpi"><div class="v num">×${s.bestCombo}</div><div class="k">best combo</div></div>
       <div class="kpi"><div class="v num">+${s.xp}</div><div class="k">XP</div></div>
     </div>
+    <div class="small muted" style="margin-top:10px">${rankLine()}</div>
     ${sessionFactsHtml(s)}
     ${s.milestone ? `<div class="milestone">Milestone reached: <b>${pct(s.milestone)}% locked in</b></div>` : ''}
     <p class="small muted" style="margin-top:12px">${d.min ? `Docket cleared. Streak ${streak()}.` : ms.reviews.count ? `${ms.reviews.count} reviews still due today.` : !ms.scenario.done && ms.scenario.needed ? 'One scenario left to clear the docket.' : !ms.story.done && ms.story.needed ? 'One story drill left to clear the docket.' : 'Almost there.'}</p>
@@ -996,6 +1135,7 @@ async function startRecording(area) {
 // ---------------------------------------------------------------- event binding
 function bind(root) {
   root.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
+  bindMock(root);
   root.querySelectorAll('[data-start]').forEach(b => b.addEventListener('click', () => startSession(b.dataset.start, b.dataset.tier)));
   root.querySelectorAll('[data-node]').forEach(b => b.addEventListener('click', () => { const n = C.nodeById[b.dataset.node]; if (nodeUnlocked(n)) go('lesson', { node: n.id }); else toast(`Locked. Finish ${C.nodeById[C.tiers[n.tier].nodes[C.tiers[n.tier].nodes.indexOf(n.id) - 1]].title} first.`); }));
   root.querySelectorAll('[data-drill]').forEach(b => b.addEventListener('click', () => startNodeDrill(b.dataset.drill)));

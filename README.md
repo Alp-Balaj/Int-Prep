@@ -13,6 +13,10 @@ https://claude.ai/artifact/WvG8yHupQi5obCC3WZ39q6
 - `brian-brennt/content/stories.json`, `quests.json` — story prompts and the 14-day schedule.
 - `brian-brennt/test-local.html` — headless smoke test. Serve the folder (`python3 -m http.server 8765`) and open it in Chromium headless with `--enable-logging=stderr` to see `[TEST]` lines.
 
+- Priority: tiers are ordered and weighted for the interview (`TIER_LEVEL` in `app.js` overrides the packs' levels): CV and Agentic first, AWS/React-Python/Security middle, eDiscovery last. The docket asks for 40 new items a day (20 in the last days); hearings unlock at 60% stable.
+- Mock interview (Docket screen): 7 quick questions, 2 scenarios and 1 spoken explain prompt drawn from every tier, timed, scored at the end. It does not touch the review schedule; scores are kept in `mocks` in the progress doc.
+- Ranks: XP maps to Intern → Paralegal → Associate → Senior Associate → Counsel → Partner → Managing Partner, shown in the top bar.
+
 Progress is stored in the artifact's database and in the browser; nothing in this repo holds personal progress or stories.
 
 ### Railway

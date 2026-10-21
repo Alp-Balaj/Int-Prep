@@ -323,6 +323,22 @@ label { font-size: 13px; color: var(--fg-2); display: block; margin-bottom: 4px;
 .facts-open span { margin-left: 6px; }
 .chip.fact-chip { border-color: var(--good); color: var(--good); font-weight: 600; }
 
+/* Rank */
+#top-xp { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 3px; font-family: var(--font-body); }
+.rank-name { font-size: 12px; font-weight: 600; color: var(--fg); white-space: nowrap; }
+.rank-bar { width: 72px; height: 3px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.rank-bar i { display: block; height: 100%; background: var(--accent); }
+
+/* Mock interview */
+.mock-time { font-size: 14px; color: var(--fg-2); }
+.mock-time.over { color: var(--bad); }
+.mock-hist { display: flex; align-items: flex-end; gap: 6px; height: 84px; margin-top: 14px; }
+.mh { flex: 1; max-width: 34px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; }
+.mh i { display: block; width: 100%; border-radius: 4px 4px 2px 2px; background: color-mix(in srgb, var(--accent) 45%, var(--surface-2)); }
+.mh.last i { background: var(--accent); }
+.mh span { font-size: 10px; color: var(--fg-3); }
+.mh.last span { color: var(--fg); }
+
 /* Stories */
 .story { padding: 12px 14px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
 .story .st { flex: 1; min-width: 180px; }
