@@ -337,7 +337,41 @@ label { font-size: 13px; color: var(--fg-2); display: block; margin-bottom: 4px;
 .chip.fact-chip { border-color: var(--good); color: var(--good); font-weight: 600; }
 
 /* Rank */
-#top-xp { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 3px; font-family: var(--font-body); }
+#top-xp { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 3px; font-family: var(--font-body); background: none; border: 0; padding: 6px 0 6px 8px; margin: -6px 0; cursor: pointer; color: inherit; }
+#top-xp:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+#top-xp:active .rank-name { color: var(--accent-2); }
+
+/* Rank sheet */
+.sheet-back { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; justify-content: center; animation: fade .15s ease; }
+.sheet { width: 100%; max-width: 560px; max-height: 88vh; max-height: 88dvh; overflow-y: auto; overscroll-behavior: contain; background: var(--surface); border: 1px solid var(--line); border-bottom: 0; border-radius: 16px 16px 0 0; padding: 18px 18px calc(22px + var(--safe-bottom)); box-shadow: var(--shadow); animation: rise .2s ease; }
+@media (min-width: 620px) { .sheet-back { align-items: center; } .sheet { border-radius: 16px; border-bottom: 1px solid var(--line); padding-bottom: 22px; } }
+@keyframes fade { from { opacity: 0; } } @keyframes rise { from { transform: translateY(24px); opacity: 0; } }
+.sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.sheet-close { background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; width: 34px; height: 34px; flex: none; cursor: pointer; font-size: 16px; line-height: 1; }
+.rk-big { font-family: var(--font-display); font-size: 30px; font-weight: 800; letter-spacing: -.02em; margin-top: 2px; }
+.rk-why { color: var(--fg-2); margin-top: 6px; }
+.rk-prog { margin-top: 16px; }
+.rk-prog .bar { height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; }
+.rk-prog .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 5px; }
+.rk-prog .ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--fg-3); margin-top: 6px; font-family: var(--font-mono); }
+.rk-gap { margin-top: 12px; font-size: 15px; }
+.rk-gap b { color: var(--accent-2); }
+.rk-sec { margin-top: 20px; }
+.rk-sec h3 { margin-bottom: 8px; }
+.ladder { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ladder li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--line); }
+.ladder li .mk { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--fg-3); display: grid; place-items: center; font-size: 11px; flex: none; }
+.ladder li.got .mk { background: var(--good); border-color: var(--good); color: #fff; }
+.ladder li.cur { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg-2)); }
+.ladder li.cur .mk { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.ladder li.locked { color: var(--fg-3); }
+.ladder li .nm { flex: 1; min-width: 0; font-weight: 600; }
+.ladder li .th { font-family: var(--font-mono); font-size: 12px; color: var(--fg-2); }
+.earn { width: 100%; border-collapse: collapse; font-size: 14px; }
+.earn td { padding: 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.earn td.x { text-align: right; font-family: var(--font-mono); white-space: nowrap; padding-left: 10px; }
+.earn td.n { text-align: right; font-family: var(--font-mono); white-space: nowrap; color: var(--fg-3); font-size: 12px; padding-left: 10px; }
+.earn tr:last-child td { border-bottom: 0; }
 .rank-name { font-size: 12px; font-weight: 600; color: var(--fg); white-space: nowrap; }
 .rank-bar { width: 72px; height: 3px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
 .rank-bar i { display: block; height: 100%; background: var(--accent); }
@@ -402,7 +436,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
     </div>
     <div class="topstats">
       <span class="streak-pill" id="top-streak" title="Streak"><span aria-hidden="true">🔥</span><b class="num" id="top-streak-n">0</b></span>
-      <span class="num" id="top-xp" title="XP">0 XP</span>
+      <button type="button" class="num" id="top-xp" aria-haspopup="dialog" aria-label="Rank details">0 XP</button>
     </div>
   </div>
 </div>

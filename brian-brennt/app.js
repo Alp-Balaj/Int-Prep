@@ -87,6 +87,7 @@ const defaultState = () => ({
   primers: {},                 // nodeId -> date the primer was first read
   settings: { interviewDate: '2026-11-02', startDate: '2026-10-20' },
   rank: 0,                     // highest rank index announced
+  xpEnd: {},                   // date -> XP total last seen that day (for today's gain and pace)
   mocks: [],                   // [{date, score, n, ms, tiers:{tier:[got, of]}}]
 });
 const defaultStories = () => ({ updatedAt: 0, items: {} }); // storyId -> {situation, decision, result, hook, iv, due, ratings:[]}
@@ -473,9 +474,67 @@ function renderTop() {
   const r = rankOf(S.xp);
   $('#top-streak-n').textContent = n;
   $('#top-xp').innerHTML = `<span class="rank-name">${esc(r.name)}</span><span class="rank-bar"><i style="width:${pct(r.f)}%"></i></span>`;
-  $('#top-xp').title = `${S.xp.toLocaleString()} XP${r.next ? ` · ${r.toNext.toLocaleString()} to ${r.next}` : ''}`;
+  $('#top-xp').title = `${S.xp.toLocaleString()} XP${r.next ? ` · ${r.toNext.toLocaleString()} to ${r.next}` : ''} · tap for details`;
   if (r.i > (S.rank || 0)) { S.rank = r.i; persist('state'); setTimeout(() => toast(`Promoted to ${r.name}.`), 900); }
+  logXp();
 }
+// XP log: the total at the end of each day, so the rank sheet can show today's gain and a pace.
+function logXp() {
+  const L = S.xpEnd = S.xpEnd || {}; const d = todayStr();
+  if (L[d] === S.xp) return;
+  L[d] = S.xp; const keys = Object.keys(L).sort(); while (keys.length > 60) delete L[keys.shift()];
+}
+function xpPace() {
+  const L = S.xpEnd || {}; const d = todayStr(); const prior = Object.keys(L).filter(k => k < d).sort();
+  const gainToday = prior.length ? Math.max(0, S.xp - L[prior[prior.length - 1]]) : null;
+  const cutoff = todayStr(new Date(Date.now() - 7 * DAY)); const base = prior.filter(k => k >= cutoff)[0] || prior[prior.length - 1];
+  if (!base) return { gainToday, perDay: null };
+  const days = Math.max(1, Math.round((parseDate(d) - parseDate(base)) / DAY));
+  return { gainToday, perDay: Math.max(0, (S.xp - L[base]) / days) };
+}
+function openRank() {
+  closeRank();
+  const r = rankOf(S.xp); const lo = RANKS[r.i][0]; const hi = r.next ? RANKS[r.i + 1][0] : null;
+  const p = xpPace(); const fmt = (n) => Math.round(n).toLocaleString();
+  const why = r.i === 0
+    ? `Everyone starts as Intern. You have <b class="num">${fmt(S.xp)}</b> XP; the first promotion is at <span class="num">${fmt(RANKS[1][0])}</span>.`
+    : `You have <b class="num">${fmt(S.xp)}</b> XP. ${esc(r.name)} starts at <span class="num">${fmt(lo)}</span> XP${hi ? ` and runs until <span class="num">${fmt(hi)}</span>` : ''}. Rank is your all-time XP total, nothing else, so it never drops for a bad day.`;
+  let gap = '';
+  if (r.next) {
+    const eta = p.perDay && p.perDay > 0 ? Math.ceil(r.toNext / p.perDay) : null;
+    gap = `<div class="rk-prog"><div class="bar"><i style="width:${pct(r.f)}%"></i></div><div class="ends"><span>${esc(r.name)} · ${fmt(lo)}</span><span>${pct(r.f)}%</span><span>${esc(r.next)} · ${fmt(hi)}</span></div></div>
+      <div class="rk-gap"><b class="num">${fmt(r.toNext)}</b> XP to <b>${esc(r.next)}</b>.</div>
+      <div class="small muted" style="margin-top:4px">${p.gainToday != null ? `+${fmt(p.gainToday)} XP today. ` : ''}${eta ? `At your recent pace (${fmt(p.perDay)} XP/day) that's about ${eta} day${eta === 1 ? '' : 's'}.` : 'Your pace shows here after a day of play.'}</div>`;
+  } else gap = `<div class="rk-gap">Top rank. Nothing left to climb, only the interview.</div>`;
+  const ladder = RANKS.map(([t, nm], i) => {
+    const cls = i < r.i ? 'got' : i === r.i ? 'cur' : 'locked';
+    const mark = i < r.i ? '✓' : i === r.i ? '●' : '';
+    const right = i <= r.i ? fmt(t) + ' XP' : `${fmt(t)} XP · ${fmt(t - S.xp)} to go`;
+    return `<li class="${cls}"><span class="mk" aria-hidden="true">${mark}</span><span class="nm">${esc(nm)}${i === r.i ? ' <span class="small muted">(you)</span>' : ''}</span><span class="th">${right}</span></li>`;
+  }).join('');
+  const rows = [
+    ['Clear the daily docket', XP.dailyMin, '1/day'], ['Full mock interview', XP.mock], ['Pass a boss hearing', XP.boss, 'per tier'], ['Pass the final hearing', XP.finalBoss, 'once'],
+    ['Rehearse a story', XP.story], ['Explain-it card, nailed', XP.explainGood], ['Scenario, best answer', XP.scenarioBest],
+    ['Read a lesson (first time)', XP.lesson], ['Recall card right, fast', XP.recall + XP.cleanHit], ['Recall card right', XP.recall],
+  ];
+  const earn = rows.map(([l, x, cap]) => `<tr><td>${esc(l)}</td><td class="x">+${x}</td>${r.next ? `<td class="n">${cap || '×' + Math.ceil(r.toNext / x)}</td>` : ''}</tr>`).join('');
+  const back = document.createElement('div'); back.className = 'sheet-back'; back.id = 'rank-sheet';
+  back.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rk-title">
+    <div class="sheet-head"><div><div class="eyebrow">Your rank</div><div class="rk-big" id="rk-title">${esc(r.name)}</div></div><button class="sheet-close" type="button" data-rk-close aria-label="Close">✕</button></div>
+    <div class="rk-why">${why}</div>${gap}
+    <div class="rk-sec"><h3>The ladder</h3><ol class="ladder">${ladder}</ol></div>
+    <div class="rk-sec"><h3>How XP is earned</h3>${r.next ? `<div class="small muted" style="margin-bottom:6px">Right column: how many of that alone would get you to ${esc(r.next)}.</div>` : ''}<table class="earn">${earn}</table></div>
+  </div>`;
+  document.body.appendChild(back); document.documentElement.style.overflow = 'hidden';
+  back.addEventListener('click', (e) => { if (e.target === back || e.target.closest('[data-rk-close]')) closeRank(); });
+  back.querySelector('[data-rk-close]').focus({ preventScroll: true });
+}
+function closeRank() {
+  const el = $('#rank-sheet'); if (!el) return;
+  el.remove(); document.documentElement.style.overflow = ''; $('#top-xp')?.focus({ preventScroll: true });
+}
+document.addEventListener('click', (e) => { if (e.target.closest('#top-xp')) openRank(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRank(); });
 function rankLine() { const r = rankOf(S.xp); return r.next ? `<b>${esc(r.name)}</b> · <span class="num">${r.toNext.toLocaleString()}</span> XP to ${esc(r.next)}` : `<b>${esc(r.name)}</b>. Top rank.`; }
 function renderTabs() {
   const due = C ? dueItems().length : 0;
