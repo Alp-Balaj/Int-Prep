@@ -53,7 +53,17 @@
 }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; }
+/* Chrome heights. app.js measures the real bars into --topbar-h / --tabbar-h; these are fallbacks.
+   Scroll padding keeps anything scrolled or focused into view clear of both bars. */
+html {
+  --topbar-h: 56px; --tabbar-h: 60px;
+  --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
+  scroll-padding-top: calc(var(--safe-top) + var(--topbar-h) + 12px);
+  scroll-padding-bottom: calc(var(--safe-bottom) + var(--tabbar-h) + 12px);
+}
+/* min-height, not height: a sticky bar only sticks inside its parent, and a body capped at one
+   screen let the top bar ride up and over content partway down long pages. */
+html, body { min-height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--fg);
   font-family: var(--font-body); font-size: 15px; line-height: 1.5;
@@ -76,8 +86,8 @@ button { font: inherit; color: inherit; }
 
 /* Top bar */
 .topbar {
-  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9;
-  background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px);
+  position: sticky; top: var(--safe-top); z-index: 9;
+  background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
 .topbar-inner {
@@ -87,9 +97,11 @@ button { font: inherit; color: inherit; }
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-.brand { font-family: var(--font-display); font-weight: 800; font-size: 18px; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
+.brand { font-family: var(--font-display); font-weight: 800; font-size: 18px; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand .flame { flex: none; }
 .brand .flame { width: 14px; height: 18px; display: inline-block; }
-.topstats { display: flex; gap: 14px; align-items: center; font-size: 13px; color: var(--fg-2); }
+.topstats { display: flex; gap: 14px; align-items: center; font-size: 13px; color: var(--fg-2); flex: none; white-space: nowrap; }
+@media (max-width: 360px) { .topstats { gap: 10px; } .brand { font-size: 16px; } }
 .topstats b { color: var(--fg); font-weight: 600; }
 .streak-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); }
 .streak-pill.hot { border-color: var(--accent); color: var(--accent-2); }
@@ -97,7 +109,8 @@ button { font: inherit; color: inherit; }
 /* Page column */
 main {
   max-width: 760px; margin: 0 auto;
-  padding-block: 18px 96px;
+  padding-top: 18px;
+  padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 32px);
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   display: flex; flex-direction: column; gap: 18px;
@@ -161,7 +174,7 @@ main {
 /* Tabs */
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 9;
-  background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(10px);
+  background: var(--bg);
   border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-left: max(8px, env(safe-area-inset-left, 0px));
@@ -362,7 +375,7 @@ canvas.spark { width: 100%; height: 56px; display: block; }
 @media (max-width: 420px) { .stat-row { grid-template-columns: 90px 1fr 50px; } }
 
 /* Toast */
-.toast { position: fixed; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--surface-2); border: 1px solid var(--line); color: var(--fg); padding: 10px 14px; border-radius: 8px; box-shadow: var(--shadow); font-size: 14px; z-index: 20; max-width: calc(100vw - 32px); }
+.toast { position: fixed; left: 50%; bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 10px); transform: translateX(-50%); background: var(--surface-2); border: 1px solid var(--line); color: var(--fg); padding: 10px 14px; border-radius: 8px; box-shadow: var(--shadow); font-size: 14px; z-index: 20; max-width: calc(100vw - 32px); }
 
 /* Misc */
 .ring-svg { transform: rotate(-90deg); }

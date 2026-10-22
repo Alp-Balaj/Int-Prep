@@ -41,6 +41,26 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const pct = (n) => Math.round(n * 100);
+// Focus without letting the browser scroll the element under the sticky top bar or the tab bar;
+// scrollIntoView honours the scroll-padding set from the measured bar heights.
+const reveal = (el) => { if (!el) return; el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
+// Keep --topbar-h / --tabbar-h equal to the bars' real heights (rank name length, font load and
+// rotation all change them), so page padding and scroll padding never leave content under a bar.
+(function trackChrome() {
+  const set = () => {
+    const top = document.querySelector('.topbar'), tab = document.querySelector('.tabbar-inner');
+    const root = document.documentElement.style;
+    if (top) root.setProperty('--topbar-h', top.offsetHeight + 'px');
+    if (tab) root.setProperty('--tabbar-h', tab.offsetHeight + 'px');
+  };
+  const start = () => {
+    set();
+    if ('ResizeObserver' in window) { const ro = new ResizeObserver(set); document.querySelectorAll('.topbar, .tabbar-inner').forEach(el => ro.observe(el)); }
+    addEventListener('resize', set); addEventListener('orientationchange', set);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(set);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
 const todayStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const parseDate = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 const endOfToday = () => { const d = new Date(); d.setHours(23, 59, 59, 999); return d.getTime(); };
@@ -851,7 +871,7 @@ function answerStatic(it, correct, grade, ms, verdictText, why, extra) {
   if (res.fact) (session.facts = session.facts || []).push({ id: it.id, kind: res.fact });
   sessionTele({ answered: session.answered }); checkMinimum();
   $('#feedback').innerHTML = feedbackHtml(verdictText, correct ? true : grade === HARD ? null : false, why, res, extra);
-  $('[data-next]').focus();
+  reveal($('[data-next]'));
 }
 
 // ---- Summary
