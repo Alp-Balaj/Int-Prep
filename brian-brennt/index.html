@@ -69,7 +69,11 @@ body {
   font-family: var(--font-body); font-size: 15px; line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+/* Installed on iOS the page runs under the status bar. Reserve that strip in the flow (padding) so the
+   sticky header starts below it, instead of being pushed down onto the first card; the fixed strip
+   then keeps scrolled content from showing through the status bar. */
+body { padding-top: var(--safe-top); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--safe-top); z-index: 10; background: var(--bg); }
 h1, h2, h3, h4 { font-family: var(--font-display); line-height: 1.15; margin: 0; text-wrap: balance; }
 h1 { font-size: 28px; font-weight: 800; letter-spacing: -.01em; }
 h2 { font-size: 20px; font-weight: 700; }
