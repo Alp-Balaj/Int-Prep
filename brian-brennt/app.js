@@ -183,7 +183,7 @@ async function loadContent() {
     const lvl = TIER_LEVEL[tid] ?? p.tier.level;
     tiers[tid] = tiers[tid] || { id: tid, name: p.tier.name, level: lvl, tease: p.tier.tease, nodes: [] };
     for (const n of p.nodes) {
-      const node = { id: n.id, tier: tid, level: lvl, title: n.title, tease: n.tease, primer: n.primer, lesson: n.lesson, cards: [], explain: [], scenarios: [] };
+      const node = { id: n.id, tier: tid, level: lvl, title: n.title, tease: n.tease, primer: n.primer, lesson: n.lesson, inPractice: n.inPractice, cards: [], explain: [], scenarios: [] };
       for (const c of n.cards || []) { const it = { ...c, kind: 'recall', node: n.id, tier: tid, level: lvl }; items[c.id] = it; node.cards.push(c.id); }
       for (const e of n.explain || []) { const it = { ...e, kind: 'explain', node: n.id, tier: tid, level: lvl }; items[e.id] = it; node.explain.push(e.id); }
       for (const s of n.scenarios || []) { const it = { ...s, kind: 'scenario', node: n.id, tier: tid, level: lvl }; items[s.id] = it; node.scenarios.push(s.id); }
@@ -834,6 +834,16 @@ function primerBlock(n) {
     <dl class="terms">${P.terms.map(t => `<div><dt>${inline(t.term)}</dt><dd>${inline(t.def)}</dd></div>`).join('')}</dl>
   </div>`;
 }
+function inPracticeBlock(n) {
+  const X = n.inPractice; if (!X) return '';
+  return `<div class="in-practice">
+    <div class="eyebrow">In practice</div>
+    <div class="setting">${inline(X.setting)}</div>
+    <div class="lesson">${paras(X.story)}</div>
+    ${X.flow ? `<pre><code>${esc(X.flow)}</code></pre>` : ''}
+    <div class="takeaway"><span class="eyebrow">Take into the room</span>${inline(X.takeaway)}</div>
+  </div>`;
+}
 function markPrimer(id) { if (!S.primers[id]) { S.primers[id] = todayStr(); persist('state'); } }
 function renderLesson() {
   const n = C.nodeById[route.node]; if (!n) return renderTree();
@@ -852,6 +862,7 @@ function renderLesson() {
     ${n.primer ? '<div class="eyebrow" style="margin-top:18px">Lesson</div>' : ''}
     <div class="lesson">${paras(L.body)}</div>
     ${L.snippet ? `<pre><code>${esc(L.snippet)}</code></pre>` : ''}
+    ${inPracticeBlock(n)}
     <p class="small" style="margin-top:12px">Source: <a href="${esc(L.source.url)}" target="_blank" rel="noopener">${esc(L.source.title)}</a></p>
     <hr>
     <div class="row"><button class="btn primary" data-drill="${n.id}">Drill this node</button>${next ? (nodeUnlocked(next) ? `<button class="btn" data-lesson="${next.id}">Next: ${esc(next.title)} →</button>` : `<span class="small muted">Next: 🔒 ${esc(next.tease)}</span>`) : ''}</div>

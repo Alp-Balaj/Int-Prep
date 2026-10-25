@@ -48,6 +48,16 @@ for (const n of pack.nodes || []) {
       if (dw < 5 || dw > 30) err(w + ': primer term "' + t.term + '" def is ' + dw + ' words (want 8-25)');
     }
   }
+  const X = n.inPractice;
+  if (!X) err(w + ': inPractice missing');
+  else {
+    if (!X.setting || X.setting.length > 90) err(w + ': inPractice.setting missing or > 90 chars');
+    const sw2 = words(X.story);
+    if (sw2 < 120 || sw2 > 270) err(w + ': inPractice.story is ' + sw2 + ' words (want 140-240)');
+    if (X.flow && X.flow.split('\n').length > 10) err(w + ': inPractice.flow > 10 lines');
+    const tw = words(X.takeaway);
+    if (tw < 8 || tw > 35) err(w + ': inPractice.takeaway is ' + tw + ' words (want 10-30)');
+  }
   const L = n.lesson || {};
   const wc = words(L.body);
   if (wc < 120 || wc > 340) err(w + ': lesson.body is ' + wc + ' words (want 150-300)');

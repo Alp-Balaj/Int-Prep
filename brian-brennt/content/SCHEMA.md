@@ -22,6 +22,13 @@ One JSON file per content pack. Several packs may share a `tier.id`; the game me
         "sketch": "optional, <= 12 lines ASCII diagram of the picture. Omit the key if none.",
         "terms": [ { "term": "ReAct", "def": "8-25 words. One plain sentence defining a term the lesson or cards use." } ]   // 3-7 entries, the words a newcomer would trip on
       },
+      "inPractice": {
+        // shown under the lesson: one concrete, realistic story of a team using this in production
+        "setting": "<= 90 chars. Who and at what scale, e.g. 'A food-delivery platform handling 40k orders an hour across 3 cities'.",
+        "story": "140-240 words, paragraphs separated by a blank line. Narrative, not a list: the problem they had, what they built with this concept (real config names, numbers, versions where they matter), the moment it bit them or the trade-off they hit, and how it ended. Every mechanism from the lesson that appears is shown doing work. Fictional-but-realistic team; never claim a named real company does something unless verified.",
+        "flow": "optional, <= 10 lines ASCII of the request/data flow in this story. Omit the key if none.",
+        "takeaway": "10-30 words. The one thing from this story to say in an interview."
+      },
       "lesson": {
         "body": "150-300 words. Plain prose, paragraphs separated by a blank line. Inline **bold** and `code` allowed, nothing else. Teach the actual mechanism, not a definition list. Where it helps, map to what the learner already knows: C#, .NET, Angular, Azure DevOps, Elasticsearch, Kafka, SQL Server.",
         "snippet": "optional, <= 24 lines. Real code (Python/HCL/TSX/JSON/bash) or an ASCII diagram. Omit the key if none.",
@@ -69,4 +76,5 @@ Rules
 - No filler. Every `why` teaches something.
 - Primers come before the detail: define every term the lesson or cards rely on that a newcomer would not know, unless an earlier node in the same tier already defined it.
 - Cliffhanger teases: "What happens to your DB password when Terraform state leaks?" not "Terraform state basics".
+- Every node has an `inPractice` story, and no two nodes in a pack reuse the same company/setting.
 - Run `node /home/alpi/Documents/Projects/Int-Prep/brian-brennt/content/validate.js <file.json>` until it prints OK.
